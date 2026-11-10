@@ -11,6 +11,7 @@
     <ApplicationIcon>Assets\alexandra-icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="../../LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <Content Include="../../docs/READ-ME-FIRST.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <Content Include="../../output/pdf/Alexandra-Read-Me.pdf" Link="Alexandra-Read-Me.pdf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <Resource Include="Assets/alexandra-icon.ico"/>

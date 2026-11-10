@@ -57,15 +57,19 @@ Run `src/Alexandra.App/bin/Release/net8.0-windows/Alexandra.App.exe` after build
 
 ## Release maintenance
 
-Use a new version for every binary release. The release scripts target this repository and require the publisher's authenticated GitHub CLI; credentials are never packaged. Do not overwrite distributed artifacts.
+Use a new version for every binary release. First update the project version, guides and release notes, run tests and the source audit, then commit and push the reviewed source to public `main`. Packaging and publishing require that exact clean, published revision. The release scripts target this repository and require the publisher's authenticated GitHub CLI; credentials are never packaged. Do not overwrite distributed artifacts.
 
 ```powershell
 .\scripts\verify-public-source.ps1
+.\scripts\test-release-source.ps1
+# Commit and push the reviewed changes before the next two commands.
 .\scripts\build-friends-release.ps1 -Version <new-version> -AllowUnsignedTesterRelease
 .\scripts\publish-friends-release.ps1 -Version <new-version> -Publish
 ```
 
 The historical release tags retain their original release-channel-only content, with anonymized commit metadata. `main` contains the audited source snapshot based on 0.1.24. Old private development history was not published.
+
+New release packages are built from an isolated Git archive, so local or ignored files cannot enter the build. Each includes `LICENSE.txt` and `source.json` identifying the public source revision. The publisher checks that revision, creates a matching release tag without moving existing tags, and adds pinned browse/source-ZIP/license links to the release notes. GitHub's automatic source downloads then contain the matching source. These checks record the build process; they are not cryptographic build attestations or a claim of byte-for-byte reproducible binaries.
 
 ## License
 

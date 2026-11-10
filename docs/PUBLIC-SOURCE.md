@@ -18,3 +18,9 @@ Before publishing, run `scripts/verify-public-source.ps1` against the tracked fi
 Use a GitHub no-reply email for public commits. Do not merge or push old private development history into this repository. Branches and existing release tags were rewritten to remove the previous identifying author metadata; existing release assets were not changed. GitHub or prior recipients may retain old cached copies outside current branch/tag history.
 
 Release scripts never create or distribute API keys. Each installation configures its own access. Do not post real logs, keys, screenshots or journals in issues without removing private information.
+
+## Release source links
+
+Releases through 0.1.24 predate source publication. Their release notes link explicitly to the audited public snapshot and disclose that their automatic source archives are historical release-channel placeholders, not application code. Those binary assets and tags are not changed to imply a match that was never established.
+
+Future packaging requires a clean checkout whose committed version and revision match public `main`. It builds an isolated archive of that commit, bundles the MIT notice and `source.json`, and verifies the same source metadata in the update package. Publishing refuses mismatched revisions or tags and generates pinned source links. Never use the old private development checkout to build an official release.

@@ -8,7 +8,11 @@ $package=Join-Path $release "Alexandra-$Version-full.nupkg"
 $manifest=Join-Path $release 'releases.win.json'
 $guide=Join-Path $release 'Alexandra-Read-Me.pdf'
 $readme=Join-Path $release 'README.md'
-foreach($path in @($setup,$package,$manifest,$guide,$readme)) { if(-not(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing release artifact: $path" } }
+$sourcePath=Join-Path $release 'source.json'
+foreach($path in @($setup,$package,$manifest,$guide,$readme,$sourcePath)) { if(-not(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing release artifact: $path" } }
+. (Join-Path $PSScriptRoot 'release-source.ps1')
+$source=Get-Content -LiteralPath $sourcePath -Raw | ConvertFrom-Json
+Assert-ReleaseSourceMetadata $source $Version $source.Commit
 if((Get-Item -LiteralPath $setup).VersionInfo.ProductVersion -ne $Version) { throw 'Installer version does not match.' }
 $assets=(Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).Assets
 $asset=@($assets | Where-Object { $_.PackageId -eq 'Alexandra' -and $_.Version -eq $Version -and $_.Type -eq 'Full' })
@@ -26,11 +30,11 @@ try {
     }
     foreach($required in @('Alexandra.App.exe','Alexandra.App.dll','Alexandra.Core.dll','Alexandra.Infrastructure.dll',
         'Velopack.dll','coreclr.dll','PresentationFramework.dll','.playwright/node/win32_x64/node.exe','.playwright/package/package.json',
-        'README.md','Alexandra-Read-Me.pdf')) {
+        'README.md','Alexandra-Read-Me.pdf','LICENSE.txt','source.json')) {
         if(-not($names | Where-Object { $_.EndsWith('/'+$required,[StringComparison]::OrdinalIgnoreCase) })) { throw "Missing runtime payload: $required" }
     }
     # Downloadable guides must be exactly the same files included with the installed app.
-    foreach($document in @($readme,$guide)) {
+    foreach($document in @($readme,$guide,$sourcePath)) {
         $name=[IO.Path]::GetFileName($document)
         $entry=@($zip.Entries | Where-Object { $_.FullName -eq "lib/app/$name" })
         if($entry.Count -ne 1) { throw "Unexpected bundled guide path: $name" }

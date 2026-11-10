@@ -7,7 +7,13 @@ $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $PSScriptRoot
 $repo='robotdestroy/Alexandra-Releases'
 $release=Join-Path $root "outputs\releases\$Version"
+. (Join-Path $PSScriptRoot 'release-source.ps1')
+$source=Get-ReleaseSource -Root $root -Version $Version
+& (Join-Path $PSScriptRoot 'verify-public-source.ps1')
+Assert-PublishedReleaseSource $source
 & (Join-Path $PSScriptRoot 'verify-release.ps1') -Version $Version
+$builtSource=Get-Content -LiteralPath (Join-Path $release 'source.json') -Raw | ConvertFrom-Json
+Assert-ReleaseSourceMetadata $builtSource $Version $source.Commit
 $gh=Get-Command gh -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
 if(-not $gh -and (Test-Path 'C:\Program Files\GitHub CLI\gh.exe')) { $gh='C:\Program Files\GitHub CLI\gh.exe' }
 if(-not $gh) { throw 'Install GitHub CLI and sign in on the publishing PC. Never put a publishing token in the app.' }
@@ -26,14 +32,25 @@ $files=@(
     (Join-Path $release 'releases.win.json'),
     (Join-Path $release 'RELEASES'),
     (Join-Path $release 'README.md'),
-    (Join-Path $release 'Alexandra-Read-Me.pdf')
+    (Join-Path $release 'Alexandra-Read-Me.pdf'),
+    (Join-Path $release 'source.json')
 ) | Where-Object { Test-Path -LiteralPath $_ }
 $notes="Alexandra $Version - Windows x64 friends beta. Download Alexandra-win-Setup.exe. Self-contained: no separate .NET install. Read Me included and attached. One-time Setup: enter a separately supplied API key, select voice input, and review cloud consent. No API keys or personal data are bundled. Updates download automatically and install next launch. Unsigned test build: Windows may display Unknown publisher warnings."
 $notesPath=Join-Path $root "docs\releases\$Version.md"
-$notesArgs=if(Test-Path -LiteralPath $notesPath) { @('--notes-file',$notesPath) } else { @('--notes',$notes) }
+if(Test-Path -LiteralPath $notesPath) { $notes=Get-Content -LiteralPath $notesPath -Raw }
+$notes=Get-SourceReleaseNotes -Body $notes -Commit $source.Commit
+$tagCommit=Get-RemoteReleaseCommit $source.Repository $Version
+if($tagCommit -and $tagCommit -cne $source.Commit) { throw 'Release tag points to a different source commit; use a new version.' }
+if(-not $tagCommit) {
+    & git -C $root push ($source.Repository+'.git') "$($source.Commit):refs/tags/v$Version"
+    if($LASTEXITCODE -ne 0) { throw 'Could not publish matching source tag.' }
+}
 if(-not $resumeDraft) {
-    & $gh release create "v$Version" @files --repo $repo --title "Alexandra $Version" @notesArgs --draft
+    $notes | & $gh release create "v$Version" @files --repo $repo --title "Alexandra $Version" --notes-file - --verify-tag --draft
     if($LASTEXITCODE -ne 0) { throw 'Draft release upload failed.' }
+} else {
+    $notes | & $gh release edit "v$Version" --repo $repo --notes-file -
+    if($LASTEXITCODE -ne 0) { throw 'Could not update draft source links.' }
 }
 $remote=& $gh release view "v$Version" --repo $repo --json assets | ConvertFrom-Json
 if($LASTEXITCODE -ne 0 -or @($remote.assets).Count -ne $files.Count) { throw 'Unexpected draft assets. Release remains a draft.' }
@@ -44,6 +61,7 @@ foreach($file in $files) {
     if($remoteAsset[0].digest -and $remoteAsset[0].digest -ne ('sha256:'+(Get-FileHash -LiteralPath $file).Hash.ToLowerInvariant())) { throw 'Remote asset digest mismatch; release remains a draft.' }
 }
 if($Publish) {
+    if((Get-RemoteReleaseCommit $source.Repository $Version) -cne $source.Commit) { throw 'Source tag changed; release remains a draft.' }
     & $gh release edit "v$Version" --repo $repo --draft=false --latest
     if($LASTEXITCODE -ne 0) { throw 'Could not publish verified draft.' }
     Write-Host 'Published: https://github.com/robotdestroy/Alexandra-Releases/releases/latest'
