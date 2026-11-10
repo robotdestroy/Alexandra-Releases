@@ -1,0 +1,9 @@
+{"timestamp":"2026-11-01T10:00:00Z","event":"Commander","FID":"F-SYNTHETIC-A","Name":"Fixture Commander A"}
+{"timestamp":"2026-11-01T10:00:01Z","event":"LoadGame","Commander":"Fixture Commander A","Ship":"mandalay","ShipID":1}
+{"timestamp":"2026-11-01T10:00:02Z","event":"Location","StarSystem":"Sol"}
+{"timestamp":"2026-11-01T10:00:03Z","event":"Loadout","Ship":"mandalay","ShipID":1,"Modules":[]}
+{"timestamp":"2026-11-01T10:00:04Z","event":"Materials","Raw":[{"Name":"iron","Count":10}],"Manufactured":[],"Encoded":[]}
+{"timestamp":"2026-11-01T10:00:05Z","event":"Missions","Active":[],"Failed":[],"Complete":[]}
+{"timestamp":"2026-11-01T10:00:06Z","event":"MissionAccepted","MissionID":100,"LocalisedName":"Synthetic delivery","DestinationSystem":"Ega","DestinationStation":"Synthetic Depot","Commodity":"steel","Count":20,"Expiry":"2026-11-10T10:00:00Z"}
+{"timestamp":"2026-11-01T10:00:07Z","event":"ColonisationConstructionDepot","MarketID":555,"ConstructionComplete":false,"ResourcesRequired":[{"Name":"steel","RequiredAmount":50,"ProvidedAmount":10}]}
+

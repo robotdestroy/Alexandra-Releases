@@ -1,0 +1,7 @@
+# Keep packaged documents and assets byte-for-byte intact on Windows checkouts.
+*.pdf binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.png binary
+*.jpg binary

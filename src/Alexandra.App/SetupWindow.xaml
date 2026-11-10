@@ -1,0 +1,104 @@
+<Window x:Class="Alexandra.App.SetupWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Alexandra · Setup" Width="560" Height="720" MinWidth="530" MinHeight="400"
+    Background="{StaticResource WindowBrush}" Foreground="{StaticResource TextPrimaryBrush}" FontFamily="{StaticResource BodyFontFamily}" FontSize="17"
+    WindowStartupLocation="CenterOwner" PreviewKeyDown="CaptureKey">
+    <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <ScrollViewer x:Name="SettingsScroll" Grid.Row="0" VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="24">
+        <TextBlock x:Name="SetupHeading" Text="SETUP" FontFamily="{StaticResource AlexandraFontFamily}" Foreground="{StaticResource AccentBrush}" FontSize="28" Margin="0,0,0,18"/>
+        <StackPanel x:Name="WelcomePanel" Visibility="Collapsed" Margin="0,0,0,18">
+            <TextBlock Text="Alexandra is your voice companion for Elite Dangerous." TextWrapping="Wrap" Margin="0,0,0,8"/>
+            <TextBlock Text="Choose your microphone and push-to-talk button, then add your API key. Hold to talk; release to hear Alexandra. Right-click the waveform for Setup."
+                       FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+        </StackPanel>
+        <Border x:Name="StartupSection" Background="{StaticResource RowBrush}" Padding="14" Margin="0,0,0,22">
+            <StackPanel>
+                <TextBlock Text="Startup" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,12"/>
+                <CheckBox x:Name="OpenWithEliteBox" Content="Open Alexandra when Elite starts" Margin="0,0,0,8"/>
+                <TextBlock Text="Starts a quiet helper when you sign in to Windows. It waits for the actual game, then opens Alexandra once in your saved mode and position. No microphone, screenshots or AI usage while waiting. If you close Alexandra, it stays closed until your next game session. Turn this off and Save to stop the helper."
+                           FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="24,0,0,0"/>
+            </StackPanel>
+        </Border>
+        <StackPanel x:Name="MicrophoneSection">
+        <TextBlock Text="Microphone"/>
+        <ComboBox x:Name="MicrophoneBox" Margin="0,6,0,18" MinHeight="30"/>
+        </StackPanel>
+        <StackPanel x:Name="PushToTalkSection">
+        <TextBlock Text="Push to talk"/>
+        <Grid Margin="0,6,0,4">
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Button x:Name="KeyboardButton" Click="LearnKeyboard" HorizontalContentAlignment="Left"/>
+            <Button Grid.Column="1" Content="Reset to F12" Click="ResetKeyboard" Margin="8,4,0,4"/>
+        </Grid>
+        <TextBlock Text="Choose an unused single key. It is still passed through to other apps."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+        <Grid Margin="0,6,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Button x:Name="HotasButton" Content="Detect HOTAS button" Click="LearnHotas" HorizontalContentAlignment="Left"/>
+            <Button Grid.Column="1" Content="Clear" Click="ClearHotas" Margin="8,4,0,4"/>
+        </Grid>
+        <TextBlock x:Name="HotasLabel" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,18"/>
+        </StackPanel>
+        <StackPanel x:Name="ApiKeySection">
+        <TextBlock Text="OpenAI API key"/>
+        <PasswordBox x:Name="KeyBox" Margin="0,6,0,4" Padding="8"/>
+        <TextBlock Text="Use a key from the OpenAI project paying for your usage. Leave blank to keep a saved key. Stored encrypted for this Windows user and preserved across updates. No key is included in the installer. ChatGPT subscriptions do not cover API costs."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
+        <TextBlock x:Name="OnboardingCloudNotice" Visibility="Collapsed"
+                   Text="Save and start enables cloud voice and research. Your voice, relevant game data, and game images for visual questions go to OpenAI. Research uses public web sources. Replies use an AI-generated voice. Optional local debug logging is off by default."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+        </StackPanel>
+        <StackPanel x:Name="AdditionalSettingsSection">
+        <TextBlock Text="Conversational voice"/>
+        <Grid Margin="0,6,0,4">
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <ComboBox x:Name="VoiceBox" MinHeight="30" VerticalAlignment="Center"/>
+            <Button x:Name="PreviewVoiceButton" Grid.Column="1" Content="Preview" Click="PreviewVoiceClick" Margin="8,0,0,0"/>
+        </Grid>
+        <TextBlock Text="Selecting a voice plays a short sample. Uses API credit the first time; samples are reused while Setup is open. Save applies your choice."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+        <TextBlock x:Name="VoicePreviewStatus" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,18"/>
+        <CheckBox x:Name="ConsentBox" Margin="0,0,0,12" Foreground="{StaticResource TextPrimaryBrush}">
+            <TextBlock TextWrapping="Wrap" Width="420"
+                Text="Allow cloud voice and research. My microphone recording, relevant local game data, and game images used to answer my visual questions may be sent to OpenAI. Research queries go to web sources; recommended system names are checked with EDSM."/>
+        </CheckBox>
+        <TextBlock Text="Alexandra uses an AI-generated voice. Visual questions such as 'explain this warning' automatically inspect Elite while it is in front; analysis images stay in memory. Only an explicit 'take a screenshot' request saves a PNG in Pictures / Alexandra. Save-only images are not uploaded. No background watching or game controls. Avoid private overlays over the game."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
+        <CheckBox x:Name="BrowserBox" Content="Allow the isolated research browser" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6"/>
+        <TextBlock Text="Public Inara and supported Elite reference pages only. No personal browser profile, logins, account changes, downloads, or desktop control. Human-access checks stop the lookup."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
+        <CheckBox x:Name="MemoryBox" Content="Remember my commander, goals and notes" Margin="0,0,0,6"/>
+        <TextBlock Text="Keeps local game history, your requested goals/notes and dated research summaries across launches. Catches up from Elite journals, without recording background audio or screenshots. Relevant memories may be sent with your cloud questions. Stored as readable local data, separately per commander. Turning this off pauses memory; it does not delete saved items. Ask Alexandra to forget a specific saved item."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
+        <CheckBox x:Name="LoggingBox" Content="Save local conversation debug logs" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6"/>
+        <TextBlock Text="Saves what you said, generated replies, lookups, sources, and errors as local text for up to 7 days / 10 MB. No audio, screenshots, raw journals, or API keys. Logs can contain personal conversation details. They are not automatically uploaded."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+        <Button x:Name="ViewLogsButton" Content="View debug logs" Click="ViewLogs" HorizontalAlignment="Left" Margin="0,8,0,18"/>
+        <Expander Header="Advanced" Foreground="{StaticResource TextPrimaryBrush}">
+            <StackPanel Margin="0,12,0,12">
+                <TextBlock Text="Elite journal folder"/>
+                <TextBox x:Name="JournalBox" Margin="0,6,0,12" Padding="6"/>
+                <TextBlock Text="Research helper model (used only for lookups)"/>
+                <TextBox x:Name="ModelBox" Margin="0,6,0,0" Padding="6"/>
+            </StackPanel>
+        </Expander>
+        </StackPanel>
+    </StackPanel>
+    </ScrollViewer>
+    <Border x:Name="SaveFooter" Grid.Row="1" Background="{StaticResource WindowBrush}" Padding="24,12,24,16">
+        <StackPanel>
+            <TextBlock x:Name="ErrorText" TextWrapping="Wrap" Foreground="{StaticResource AccentHoverBrush}" Margin="0,0,0,8"/>
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock x:Name="SaveHint" Text="Changes apply when you save." FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                <Button x:Name="SaveButton" Grid.Column="1" Content="Save" Click="SaveClick" MinWidth="110" MinHeight="44" Margin="0"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+    </Grid>
+</Window>
+

@@ -1,0 +1,2 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><EnableWindowsTargeting>true</EnableWindowsTargeting></PropertyGroup><ItemGroup><ProjectReference Include="../../src/Alexandra.Infrastructure/Alexandra.Infrastructure.csproj"/><Compile Include="../../src/Alexandra.App/WindowsSystemClipboard.cs" Link="WindowsSystemClipboard.cs"/><PackageReference Include="NAudio" Version="2.3.0"/><PackageReference Include="System.Speech" Version="10.0.10"/></ItemGroup></Project>
+

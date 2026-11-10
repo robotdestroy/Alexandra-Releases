@@ -1,0 +1,6 @@
+{"timestamp":"2026-10-26T12:00:00Z","event":"LoadGame","Commander":"Synthetic Commander","FID":"F123456","Ship":"mandalay","ShipID":10,"Credits":123}
+{"timestamp":"2026-10-26T12:00:01Z","event":"Loadout","Ship":"mandalay","ShipID":10,"Modules":[{"Slot":"FrameShiftDrive","Item":"int_hyperdrive_size5_class5"}]}
+{"timestamp":"2026-10-26T12:00:02Z","event":"Location","StarSystem":"Sol"}
+{"timestamp":"2026-10-26T12:00:03Z","event":"Materials","Raw":[{"Name":"iron","Count":15}],"Manufactured":[],"Encoded":[]}
+{"timestamp":"2026-10-26T12:00:04Z","event":"Docked","StationName":"Synthetic Station","StarSystem":"Sol"}
+

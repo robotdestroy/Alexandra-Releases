@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include="../Alexandra.Core/Alexandra.Core.csproj"/><PackageReference Include="Microsoft.Playwright" Version="1.64.1"/></ItemGroup></Project>
