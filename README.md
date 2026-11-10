@@ -67,4 +67,6 @@ Use a new version for every binary release. The release scripts target this repo
 
 The historical release tags retain their original release-channel-only content, with anonymized commit metadata. `main` contains the audited source snapshot based on 0.1.24. Old private development history was not published.
 
-No open-source license has been granted yet. Publishing source for inspection does not imply a license to reuse or redistribute it. Third-party packages remain under their respective licenses.
+## License
+
+Alexandra's source and documentation are available under the [MIT License](LICENSE), attributed to `robotdestroy`. Third-party packages remain under their respective licenses. This does not grant rights to the separately supplied preview font, which is excluded from this repository.

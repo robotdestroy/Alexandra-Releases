@@ -9,7 +9,7 @@ This repository contains an audited source snapshot based on Alexandra 0.1.24, p
 - Browser profiles, caches, local build output and diagnostics.
 - The separately supplied EuroStyle font. No redistribution permission is recorded; public builds use Windows-provided Segoe UI instead.
 
-The app icon is the existing project asset. NuGet and tool dependencies are restored from their package sources; their licenses remain separate. No additional license for the application source has been selected yet.
+The app icon is the existing project asset. The application's source and documentation are covered by the [MIT License](../LICENSE), attributed to `robotdestroy` without a personal name or email address. NuGet and tool dependencies are restored from their package sources; their licenses remain separate. The excluded preview font is not covered by this license grant.
 
 ## Verification
 
