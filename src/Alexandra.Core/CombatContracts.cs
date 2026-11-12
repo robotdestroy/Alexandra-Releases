@@ -2,7 +2,9 @@ namespace Alexandra.Core;
 
 public enum CombatQueryKind { Live, Review }
 public sealed record CombatContext(string Json, string EvidenceKey, DateTimeOffset ReadAt, bool LiveAvailable,
-    CombatCalloutObservation? Callouts = null);
+    CombatCalloutObservation? Callouts = null, string? DiagnosticState = null);
+// Null means no verifiable game process. Implemented at the Windows boundary, never in Core.
+public interface IGameSessionSource { DateTimeOffset? StartedAt { get; } }
 public interface ICombatContextSource
 {
     CombatContext? Latest { get; }

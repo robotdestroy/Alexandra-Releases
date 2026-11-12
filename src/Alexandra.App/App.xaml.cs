@@ -30,14 +30,15 @@ public partial class App : Application
         }
         var app = new App();
         app.InitializeComponent();
-        var window = new MainWindow();
-        window.Loaded += (_, _) => _ = Task.Run(GameAutoStartService.ResumeIfEnabled);
+        var window = new MainWindow { ShowActivated = !args.Contains("--auto-open", StringComparer.Ordinal) };
+        window.Loaded += (_, _) => { instance.SetReady(true); _ = Task.Run(GameAutoStartService.ResumeIfEnabled); };
+        window.Closing += (_, _) => instance.SetReady(false);
         instance.Listen(() => app.Dispatcher.BeginInvoke(new Action(() =>
         {
             if (!window.IsLoaded) return;
             if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
             window.Activate();
-        })));
+        })), () => app.Dispatcher.BeginInvoke(new Action(() => AutoOpenWindow.RestoreWithoutFocus(window))));
         app.Run(window);
     }
 }

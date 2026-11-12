@@ -14,6 +14,8 @@ public interface ICompanionMemory : IGameContextSource
     Task<MemoryResult> EditAsync(MemoryEdit edit, string userTranscript, CancellationToken token, string? expectedScope = null);
     Task RememberResearchAsync(string query, Answer answer, string scope, CancellationToken token);
     Task<string?> GetScopeAsync(CancellationToken token);
+    Task<SessionLogAnchor?> CaptureSessionLogAnchorAsync(DateTimeOffset spokenAt, DateTimeOffset gameStartedAt, CancellationToken token) => Task.FromResult<SessionLogAnchor?>(null);
+    Task<bool> RecordSessionIntentAsync(SessionLogAnchor anchor, string userTranscript, CancellationToken token) => Task.FromResult(false);
 }
 
 // Model-generated tool arguments are a proposal, not permission to retain arbitrary personal information.

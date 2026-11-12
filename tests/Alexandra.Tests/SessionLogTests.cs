@@ -286,6 +286,26 @@ public sealed class SessionLogTests : IDisposable
         Assert.Empty(Files()); await Create().SynchronizeAsync(default);
         Assert.Contains("Game shutdown recorded", await OnlyLog());
     }
+    [Fact]
+    public async Task JournalOrderMigrationPreservesGoalsAndLogsWithoutCountingSessionTwice()
+    {
+        await Fixture(); var memory = Create(); await memory.SynchronizeAsync(default);
+        await memory.EditAsync(new("save", "goal", Text: "outfit my explorer"), "My goal is to outfit my explorer", default);
+        var originalLog = Assert.Single(Files());
+        var checkpoint = Assert.Single(Directory.GetFiles(Store, "memory-*.json"));
+        var json = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(checkpoint))!;
+        json.AsObject().Remove("journalOrderVersion"); // Existing 0.1.25 checkpoint.
+        await File.WriteAllTextAsync(checkpoint, json.ToJsonString());
+        var context = await Create().ReadAsync(default);
+        Assert.Contains("outfit my explorer", context.Json);
+        Assert.Equal(originalLog, Assert.Single(Files()));
+        var migrated = await OnlyLog();
+        Assert.Contains("You bought 20 t and sold 20 t", migrated);
+        Assert.Contains("Personal goal: outfit my explorer", migrated);
+        await Create().SynchronizeAsync(default);
+        Assert.Equal(migrated, await OnlyLog());
+        Assert.Equal(1, System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(checkpoint))!["journalOrderVersion"]!.GetValue<int>());
+    }
 
     [Fact]
     public async Task OffsetTimestampsAreDisplayedInUtc()
@@ -309,6 +329,121 @@ public sealed class SessionLogTests : IDisposable
         await Assert.ThrowsAsync<InvalidOperationException>(() => restarted.SynchronizeAsync(default));
         Assert.NotNull(restarted.SessionLogError);
         Assert.Equal(broken, await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task CommunityRewardsProgressAndRedemptionsAppearWithoutCountingBonusesOrAwardsAsPayouts()
+    {
+        await Append(await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "community-goal-session.jsonl")));
+        await Create().SynchronizeAsync(default);
+        var md = await OnlyLog();
+        Assert.Contains("collected 5,000,000 CR in community-goal rewards", md);
+        Assert.Contains("increased from 800 to 4,000 (+3,200)", md);
+        Assert.Contains("redeemed 3,200 CR in combat bonds", md);
+        Assert.Contains("3,000 CR in reported amounts", md); // Awards remain separate.
+        Assert.DoesNotContain("9,000,000", md); Assert.DoesNotContain("7,000,000", md);
+        await Create().SynchronizeAsync(default); Assert.Equal(md, await OnlyLog());
+    }
+
+    [Fact]
+    public async Task AutomaticPlansPersistWithoutDebugLogsOrLongTermMemoryAndKeepOriginalScope()
+    {
+        await Load("10:00:01");
+        var memory = Create(memoryEnabled: () => false);
+        await memory.SynchronizeAsync(default);
+        _clock.Now = _clock.Now.AddMinutes(1);
+        var anchor = await memory.CaptureSessionLogAnchorAsync(_clock.Now, _clock.Now.AddMinutes(-5), default);
+        Assert.NotNull(anchor);
+        Assert.True(await memory.RecordSessionIntentAsync(anchor!, "I'm going to do the new community goal combat", default));
+        var md = await OnlyLog(); Assert.Contains("Your stated session plans", md);
+        Assert.DoesNotContain("Personal goal:", md);
+        await Create(memoryEnabled: () => false).SynchronizeAsync(default);
+        Assert.Equal(md, await OnlyLog());
+        await Append("""{"timestamp":"2026-11-11T10:02:00Z","event":"LoadGame","Commander":"Different Pilot","FID":"SYNTHETIC-OTHER"}""");
+        Assert.False(await memory.RecordSessionIntentAsync(anchor!, "I'm mining gold", default));
+        Assert.DoesNotContain("mining gold", string.Join("\n", await Task.WhenAll(Files().Select(path => File.ReadAllTextAsync(path)))));
+    }
+
+    [Fact]
+    public async Task DisabledOrStoppedOrDifferentGameCannotCaptureSessionPlan()
+    {
+        await Load("10:00:01"); var memory = Create(logsEnabled: () => false);
+        _clock.Now = _clock.Now.AddMinutes(1);
+        Assert.Null(await memory.CaptureSessionLogAnchorAsync(_clock.Now, _clock.Now.AddMinutes(-5), default));
+        var enabled = Create(); await enabled.SynchronizeAsync(default);
+        Assert.Null(await enabled.CaptureSessionLogAnchorAsync(_clock.Now, _clock.Now, default));
+        await Shutdown(); _clock.Now = _clock.Now.AddHours(1);
+        Assert.Null(await enabled.CaptureSessionLogAnchorAsync(_clock.Now, _clock.Now.AddHours(-2), default));
+    }
+
+    [Fact]
+    public async Task PlanCanStartPartialSessionBeforeNextJournalEventWithCommunityBaseline()
+    {
+        await Load("09:50:00");
+        await Append("""{"timestamp":"2026-11-11T09:51:00Z","event":"CommunityGoal","CurrentGoals":[{"CGID":5,"Title":"Synthetic goal","PlayerContribution":100}]}""");
+        var memory = Create(); await memory.SynchronizeAsync(default); Assert.Empty(Files());
+        _clock.Now = _clock.Now.AddMinutes(1);
+        var anchor = await memory.CaptureSessionLogAnchorAsync(_clock.Now, _clock.Now.AddHours(-1), default);
+        Assert.NotNull(anchor);
+        Assert.True(await memory.RecordSessionIntentAsync(anchor!, "I'm turning in community goals", default));
+        await Append("""{"timestamp":"2026-11-11T10:02:00Z","event":"CommunityGoal","CurrentGoals":[{"CGID":5,"Title":"Synthetic goal","PlayerContribution":250}]}""");
+        await memory.SynchronizeAsync(default);
+        var md = await OnlyLog(); Assert.Contains("from 100 to 250 (+150)", md);
+        Assert.Contains("turning in community goals", md); Assert.Contains("Coverage is partial", md);
+    }
+
+    [Fact]
+    public void FirstContributionSnapshotAndGlobalCompletionDoNotInventSessionProgress()
+    {
+        var goals = new SessionCommunityGoals();
+        using var entry = JsonDocument.Parse("""{"event":"CommunityGoal","CurrentGoals":[{"CGID":1,"Title":"Example","PlayerContribution":1500,"Bonus":9000,"IsComplete":true}]}""");
+        goals.Apply(entry.RootElement); goals.Apply(entry.RootElement);
+        Assert.Empty(goals.Summary()); Assert.Equal(0, goals.RewardCredits);
+        Assert.Contains("no increase observed", string.Join("\n", goals.Details()));
+    }
+
+    [Fact]
+    public void ReplayDoesNotDoubleCountCommunityRewardOrBondRedemption()
+    {
+        var book = new SessionLogbook(); book.Configure(true, DateTimeOffset.Parse("2026-11-11T10:00:00Z"));
+        foreach (var json in new[] {
+            """{"timestamp":"2026-11-11T10:01:00Z","event":"CommunityGoalReward","CGID":1,"Name":"Example","Reward":5000}""",
+            """{"timestamp":"2026-11-11T10:02:00Z","event":"RedeemVoucher","Type":"CombatBond","Amount":800}""" })
+        {
+            using var entry = JsonDocument.Parse(json);
+            Assert.True(book.Apply("synthetic", entry.RootElement, "Sol", new Dictionary<long, MissionMemory>(), []));
+            Assert.False(book.Apply("synthetic", entry.RootElement, "Sol", new Dictionary<long, MissionMemory>(), []));
+        }
+        var goals = Assert.Single(book.Sessions).CommunityGoals;
+        Assert.Equal(5000, goals.RewardCredits); Assert.Equal(1, goals.RewardsClaimed);
+        Assert.Equal(800, goals.RedeemedCombatBonds);
+    }
+
+    [Fact]
+    public async Task PreviousCheckpointWithoutNewSessionFieldsLoadsSafely()
+    {
+        await Load("10:00:01"); await Create().SynchronizeAsync(default);
+        var path = Assert.Single(Directory.GetFiles(Store, "memory-*.json"));
+        var node = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
+        var session = node["sessionLogs"]!["sessions"]![0]!.AsObject();
+        session.Remove("statedPlans"); session.Remove("communityGoals");
+        await File.WriteAllTextAsync(path, node.ToJsonString());
+        await Create().SynchronizeAsync(default);
+        Assert.Single(Files()); Assert.Contains("Gameplay session", await OnlyLog());
+    }
+
+    [Fact]
+    public void CommunityDecreasesMalformedValuesAndUnknownRewardsAreNotInvented()
+    {
+        var goals = new SessionCommunityGoals();
+        void Apply(string json) => goals.Apply(JsonDocument.Parse(json).RootElement);
+        Apply("""{"event":"CommunityGoal","CurrentGoals":[{"CGID":1,"Title":"Example","PlayerContribution":100,"Bonus":9000}]}""");
+        Apply("""{"event":"CommunityGoal","CurrentGoals":[{"CGID":1,"Title":"Example","PlayerContribution":10}]}""");
+        Apply("""{"event":"CommunityGoalReward","CGID":1,"Name":"Example"}""");
+        Apply("""{"event":"RedeemVoucher","Type":"CombatBond","Amount":-1}""");
+        Assert.Empty(goals.Summary()); Assert.Equal(0, goals.RewardCredits); Assert.Equal(0, goals.RedeemedCombatBonds);
+        Assert.Contains("amount unknown", string.Join("\n", goals.Details()));
+        Assert.Contains("total decreased/reset", string.Join("\n", goals.Details()));
     }
 
     private sealed class TestClock : TimeProvider

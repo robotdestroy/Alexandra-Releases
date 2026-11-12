@@ -103,6 +103,7 @@ public sealed class CombatState
     public HullObservation? FighterHull { get; set; }
     public HullObservation? LastPilotedMainHullDamage { get; set; }
     public DateTimeOffset? LastHeatDamageAt { get; set; }
+    public DateTimeOffset? LastHeatWarningAt { get; set; }
     public DateTimeOffset? AttackedAt { get; set; }
     public string? AttackedVehicle { get; set; }
     public CombatSummary Current { get; set; } = new();
@@ -117,16 +118,16 @@ public sealed class CombatState
         {
             Archive(); Loaded = true; SessionAt = at; LocationAt = at;
             Target = null; MainHull = null; FighterHull = null; AttackedAt = null; AttackedVehicle = null;
-            LastPilotedMainHullDamage = null; LastHeatDamageAt = null;
+            LastPilotedMainHullDamage = null; LastHeatDamageAt = null; LastHeatWarningAt = null;
         }
         if (kind is "Shutdown" or "Died" or "ShipyardSwap" or "ShipyardBuy" or "Resurrect")
         { Target = null; MainHull = null; FighterHull = null; AttackedAt = null; AttackedVehicle = null; LocationAt = at;
-            LastPilotedMainHullDamage = null; LastHeatDamageAt = null; }
+            LastPilotedMainHullDamage = null; LastHeatDamageAt = null; LastHeatWarningAt = null; }
         if (kind is "Shutdown" or "Died") Loaded = false;
         if (kind is "FSDJump" or "CarrierJump" or "SupercruiseEntry" or "SupercruiseExit" or "Docked" or "Undocked" or "Location")
-        { Target = null; AttackedAt = null; LocationAt = at; LastPilotedMainHullDamage = null; LastHeatDamageAt = null; }
+        { Target = null; AttackedAt = null; LocationAt = at; LastPilotedMainHullDamage = null; LastHeatDamageAt = null; LastHeatWarningAt = null; }
         if (kind is "LaunchFighter" or "DockFighter" or "FighterDestroyed" or "VehicleSwitch")
-        { Target = null; FighterHull = null; AttackedAt = null; LocationAt = at; LastPilotedMainHullDamage = null; LastHeatDamageAt = null; }
+        { Target = null; FighterHull = null; AttackedAt = null; LocationAt = at; LastPilotedMainHullDamage = null; LastHeatDamageAt = null; LastHeatWarningAt = null; }
         if (kind is "Repair" or "RepairAll" or "RepairDrone") { MainHull = null; LastPilotedMainHullDamage = null; }
         if (kind == "Loadout" && Percent(e, "HullHealth", true) is { } hull && Text(e, "Ship") is { } shipType)
         {
@@ -142,6 +143,7 @@ public sealed class CombatState
                 LastPilotedMainHullDamage = new(at, damaged, "main_ship");
         }
         if (kind == "HeatDamage") LastHeatDamageAt = at;
+        if (kind == "HeatWarning") LastHeatWarningAt = at;
         if (kind == "UnderAttack")
         {
             AttackedAt = at;
@@ -167,13 +169,16 @@ public sealed class CombatState
         if (Current.HasActivity) { PreviousSessions.Add(Current); if (PreviousSessions.Count > 3) PreviousSessions.RemoveAt(0); }
         Current = new();
     }
-    public object View(JsonElement? status, DateTimeOffset now)
+    public object View(JsonElement? status, DateTimeOffset now, bool? gameSessionActive = null)
     {
         var at = status is { } s ? MemoryProgress.Time(s) : DateTimeOffset.MinValue;
         var flags = status is { } st ? MemoryProgress.Number(st, "Flags") : null;
         var flags2 = status is { } st2 ? MemoryProgress.Number(st2, "Flags2") ?? 0 : 0;
         var usable = Loaded && at >= (LocationAt ?? SessionAt) && at <= now && flags is >= 0 && flags2 >= 0;
         var fresh = usable && now - at <= TimeSpan.FromSeconds(15);
+        // Status.json is change-driven. An unchanged switch/pip value remains the
+        // latest state while the SAME game process/session is verified and polled.
+        var available = usable && (gameSessionActive == true || gameSessionActive is null && fresh);
         if (!usable) { flags = null; flags2 = 0; }
         bool? Flag(int bit) => flags is { } f ? (f & (1L << bit)) != 0 : null;
         var vehicle = (flags2 & 1) != 0 ? "on_foot" : Flag(26) == true ? "srv" : Flag(25) == true ? "fighter" : Flag(24) == true ? "main_ship" : "unknown";
@@ -188,6 +193,7 @@ public sealed class CombatState
         return new {
             loaded = Loaded, sessionAt = SessionAt, contextAt = LocationAt, vehicle, statusObservedAt = usable ? at : (DateTimeOffset?)null,
             statusFresh = fresh, statusAgeSeconds = usable ? Math.Max(0, (now - at).TotalSeconds) : (double?)null,
+            statusAvailable = available, gameSessionActive,
             cockpit = !usable || !ship ? null : new {
                 shieldsUp = Flag(3), hardpointsDeployed = Flag(6), flightAssistOff = Flag(5), analysisMode = Flag(27),
                 docked = Flag(0), supercruise = Flag(4),
@@ -202,10 +208,11 @@ public sealed class CombatState
             lastReportedHull = !Loaded ? null : vehicle == "main_ship" ? MainHull : vehicle == "fighter" ? FighterHull : null,
             lastPilotedMainHullDamage = !Loaded ? null : LastPilotedMainHullDamage,
             lastHeatDamageAt = !Loaded ? null : LastHeatDamageAt,
+            lastHeatWarningAt = !Loaded ? null : LastHeatWarningAt,
             lastAttack = !Loaded || AttackedAt is null ? null : new { at = AttackedAt, vehicle = AttackedVehicle,
                 recent = now >= AttackedAt && now - AttackedAt <= TimeSpan.FromSeconds(10) },
             recentCombat = Current, previousSessions = PreviousSessions.TakeLast(2),
-            limits = "Status is updated by the game on changes, not a heartbeat. statusFresh means an observation within 15 seconds, not a live server guarantee. Hull/target values are dated observations, NOT continuously measured percentages. No live ammo, weapon capacitor charge, enemy positions, exact range, damage-per-second or cause of damage is known. Awards are not a complete kill count. Only the app's optional fixed callout policy may speak proactively; no game controls."
+            limits = "Status is updated by the game on changes, not a heartbeat. statusAvailable confirms a usable latest cockpit state; it can remain available with statusFresh=false while the same running game session is verified. statusFresh only means the game wrote it within 15 seconds. Hull/target values are dated observations, NOT continuously measured percentages. No live ammo, weapon capacitor charge, enemy positions, exact range, damage-per-second or cause of damage is known. Awards are not a complete kill count. Only the app's optional fixed callout policy may speak proactively; no game controls."
         };
     }
     public static bool? Bool(JsonElement e, string name) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v) &&

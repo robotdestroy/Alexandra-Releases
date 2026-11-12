@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Security;
 using Alexandra.Core;
+using Alexandra.Infrastructure;
 using Microsoft.Win32;
 
 namespace Alexandra.App;
@@ -165,11 +166,16 @@ public sealed class GameWatcherHost : IGameWatcherHost
             using var stop = new EventWaitHandle(false, EventResetMode.ManualReset, StopName);
             stop.Reset();
             var coordinator = new GameAutoLaunchCoordinator(new WindowsGameAutoLaunchEnvironment());
+            var log = new LocalDiagnosticLog(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Alexandra", "Logs"),
+                () => new SettingsStore().Value.DiagnosticLoggingEnabled);
+            GameAutoLaunchResult? previous = null;
             do
             {
                 try
                 {
-                    if (coordinator.Check(DateTimeOffset.UtcNow) == GameAutoLaunchResult.Disabled) return;
+                    var result = coordinator.Check(DateTimeOffset.UtcNow);
+                    if (result != previous) { log.Write("startup.watcher", result.ToString()); previous = result; }
+                    if (result == GameAutoLaunchResult.Disabled) return;
                 }
                 catch (Exception) { /* Retry unreadable preferences/process state without UI or repeated launches. */ }
             } while (!stop.WaitOne(TimeSpan.FromSeconds(3)));
@@ -182,6 +188,8 @@ public sealed class WindowsGameAutoLaunchEnvironment : IGameAutoLaunchEnvironmen
 {
     public bool Enabled => new SettingsStore().Value.OpenWithElite;
     public bool CompanionRunning => SingleInstanceCoordinator.IsRunning;
+    public bool CompanionReady => SingleInstanceCoordinator.WindowReady;
+    public void RestoreCompanion() => SingleInstanceCoordinator.RestorePrimary();
 
     public bool TryGetGameSession(out string? session)
     {

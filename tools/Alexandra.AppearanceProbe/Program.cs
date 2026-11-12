@@ -141,7 +141,17 @@ internal static class Program
         SetupPreviewProbe.Run(Check);
         OnboardingProbe.Run(Check);
         AutoStartProbe.Run(Check);
+        AutoOpenProbe.Run(Check);
         WindowPositionProbe.Run(Check);
+        // Inspect the actual menu wiring without constructing MainWindow (which connects voice).
+        var repo = new DirectoryInfo(AppContext.BaseDirectory);
+        while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "Alexandra.sln"))) repo = repo.Parent;
+        if (repo is null) throw new InvalidOperationException("Run the appearance probe from a source checkout.");
+        var mainMarkup = System.Xml.Linq.XDocument.Load(Path.Combine(repo.FullName, "src", "Alexandra.App", "MainWindow.xaml"));
+        var logMenu = mainMarkup.Descendants().Single(e => e.Name.LocalName == "MenuItem" && (string?)e.Attribute("Header") == "Open session logs…");
+        Check((string?)logMenu.Attribute("Click") == "SessionLogsClick" &&
+            typeof(MainWindow).GetMethod("SessionLogsClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic) is not null,
+            "right-click menu opens session journals through the wired folder handler");
         var notice = new Border(); var noticeText = new TextBlock();
         WindowAppearance.ApplyNotice(notice, noticeText, true, "Voice busy · retrying in 12s");
         Check(notice.Visibility == Visibility.Visible && noticeText.Text.Contains("12s"), "minimal mode exposes cooldown notices");

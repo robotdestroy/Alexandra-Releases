@@ -6,17 +6,21 @@ public interface IGameAutoLaunchEnvironment
     bool Enabled { get; }
     bool TryGetGameSession(out string? session);
     bool CompanionRunning { get; }
+    bool CompanionReady { get; }
     void LaunchCompanion();
+    void RestoreCompanion();
 }
 
-public enum GameAutoLaunchResult { Disabled, Unknown, Waiting, AlreadyRunning, Launched, RetryLater }
+public enum GameAutoLaunchResult { Disabled, Unknown, Waiting, AlreadyRunning, Launched, RetryLater, WaitingForReady, LaunchUnconfirmed }
 
 public sealed class GameAutoLaunchCoordinator(IGameAutoLaunchEnvironment environment)
 {
     public static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
+    public const int MaximumAttempts = 3;
     private string? _session;
     private bool _handled;
     private DateTimeOffset _retryAfter;
+    private int _attempts;
 
     public GameAutoLaunchResult Check(DateTimeOffset now)
     {
@@ -24,24 +28,30 @@ public sealed class GameAutoLaunchCoordinator(IGameAutoLaunchEnvironment environ
         // An unreadable process list is not evidence that the game exited.
         if (!environment.TryGetGameSession(out var session)) return GameAutoLaunchResult.Unknown;
         if (!string.Equals(session, _session, StringComparison.Ordinal))
-        { _session = session; _handled = false; _retryAfter = default; }
+        { _session = session; _handled = false; _retryAfter = default; _attempts = 0; }
         if (session is null || _handled) return GameAutoLaunchResult.Waiting;
-        if (environment.CompanionRunning)
+        if (environment.CompanionReady)
         {
+            // Restore once without activating the window. A running process alone is not a ready UI.
+            try { environment.RestoreCompanion(); }
+            catch (Exception) { return GameAutoLaunchResult.RetryLater; }
             _handled = true;
-            return GameAutoLaunchResult.AlreadyRunning;
+            return _attempts > 0 ? GameAutoLaunchResult.Launched : GameAutoLaunchResult.AlreadyRunning;
         }
+        if (environment.CompanionRunning) return GameAutoLaunchResult.WaitingForReady;
         if (now < _retryAfter) return GameAutoLaunchResult.RetryLater;
+        if (_attempts >= MaximumAttempts) return GameAutoLaunchResult.LaunchUnconfirmed;
+        _attempts++;
+        _retryAfter = now + RetryDelay;
         try
         {
             environment.LaunchCompanion();
-            // Closing Alexandra is intentional. Do not reopen it during this game session.
-            _handled = true;
-            return GameAutoLaunchResult.Launched;
+            // Process.Start can succeed even when the app immediately exits or an update restarts it.
+            // Only a subsequent ready-window acknowledgement completes this game session's launch.
+            return GameAutoLaunchResult.WaitingForReady;
         }
         catch (Exception)
         {
-            _retryAfter = now + RetryDelay;
             return GameAutoLaunchResult.RetryLater;
         }
     }

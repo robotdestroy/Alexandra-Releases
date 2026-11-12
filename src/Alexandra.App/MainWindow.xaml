@@ -19,6 +19,7 @@
             <Separator Style="{StaticResource {x:Type Separator}}"/>
             <MenuItem Header="Sources from last answer…" Click="SourcesClick"/>
             <MenuItem Header="Open screenshots folder…" Click="ScreenshotsClick"/>
+            <MenuItem Header="Open session logs…" Click="SessionLogsClick"/>
             <MenuItem Header="View debug logs…" Click="LogsClick"/>
             <MenuItem Header="Stop speaking" Click="StopClick"/>
             <MenuItem Header="Clear conversation" Click="ClearClick"/>

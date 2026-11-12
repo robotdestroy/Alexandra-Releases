@@ -27,6 +27,8 @@ public sealed class CombatTests : IDisposable
     private static JsonElement Combat(CombatContext c) => Root(c).GetProperty("combat");
     private static JsonElement Element(string json) => JsonDocument.Parse(json).RootElement.Clone();
     private static void Apply(CombatState state, string json) => state.Apply(Element(json));
+    private sealed class GameSession : IGameSessionSource
+    { public DateTimeOffset? StartedAt { get; set; } = DateTimeOffset.Parse("2026-11-11T09:59:00Z"); }
     private static JsonElement View(CombatState state, string? status, DateTimeOffset? now = null) =>
         JsonSerializer.SerializeToElement(state.View(status is null ? null : Element(status), now ?? DateTimeOffset.Parse("2026-11-11T10:00:12Z")), Json);
 
@@ -86,6 +88,76 @@ public sealed class CombatTests : IDisposable
         Assert.Contains("not a heartbeat", result.Json);
         File.Delete(Path.Combine(_root, "Status.json"));
         Assert.Equal(JsonValueKind.Null, Combat(await source.ReadAsync(default)).GetProperty("cockpit").ValueKind);
+    }
+    [Fact]
+    public async Task CurrentSessionBeatsThreeAlphabeticallyLaterLegacyJournals()
+    {
+        await Fixture();
+        foreach (var date in new[] { "221029100000", "221030100000", "221031100000" })
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "Fixtures", "combat-legacy-journal.jsonl"),
+                Path.Combine(_root, $"Journal.{date}.01.log"));
+        var result = await Source().ReadAsync(default);
+        Assert.True(result.LiveAvailable); Assert.True(result.Callouts!.Eligible);
+        Assert.Equal("anaconda", Root(result).GetProperty("loadout").GetProperty("shipType").GetString());
+        Assert.Equal(60, Combat(result).GetProperty("lastReportedHull").GetProperty("percent").GetDouble());
+        Assert.Contains("2026-11-11", result.DiagnosticState);
+        var broad = await new JournalContextSource(() => _root).ReadAsync(default);
+        Assert.Contains("anaconda", broad.Json);
+    }
+    [Fact]
+    public async Task GeneralContextStillIncludesCurrentJournalWithMoreThanEightyLegacyFiles()
+    {
+        await Fixture();
+        for (var i = 1; i <= 82; i++)
+            File.Copy(Path.Combine(AppContext.BaseDirectory, "Fixtures", "combat-legacy-journal.jsonl"),
+                Path.Combine(_root, $"Journal.221031100000.{i:D2}.log"));
+        var broad = await new JournalContextSource(() => _root).ReadAsync(default);
+        Assert.Contains("anaconda", broad.Json); Assert.Equal("Test Combat System", broad.System);
+        Assert.True((await Source().ReadAsync(default)).LiveAvailable);
+    }
+    [Fact]
+    public async Task UnchangedCockpitIsAvailableWhileSameGameSessionIsVerified()
+    {
+        await Fixture(); var game = new GameSession(); var source = new CombatContextSource(() => _root, _clock, game);
+        var before = await source.ReadAsync(default);
+        _clock.Now = _clock.Now.AddMinutes(3);
+        var result = await source.ReadAsync(default);
+        Assert.True(result.LiveAvailable); Assert.False(Combat(result).GetProperty("statusFresh").GetBoolean());
+        Assert.True(Combat(result).GetProperty("statusAvailable").GetBoolean());
+        Assert.True(Combat(result).GetProperty("cockpit").GetProperty("shieldsUp").GetBoolean());
+        // Do not cancel an answer just because a write crosses the old 15-second age limit.
+        _clock.Now = before.ReadAt.AddSeconds(16);
+        // Incoming-fire recency is also part of evidence; use two reads after it has aged out.
+        var stable = await source.ReadAsync(default); _clock.Now = _clock.Now.AddSeconds(1);
+        Assert.Equal(stable.EvidenceKey, (await source.ReadAsync(default)).EvidenceKey);
+        game.StartedAt = null;
+        Assert.False((await source.ReadAsync(default)).LiveAvailable);
+        game.StartedAt = _clock.Now; // A new process may still have the previous session's files.
+        Assert.False((await source.ReadAsync(default)).LiveAvailable);
+    }
+    [Fact]
+    public async Task ProcessStoppedMissingStatusAndShutdownNeverReuseCockpitEvenWithFreshFile()
+    {
+        await Fixture(); var game = new GameSession { StartedAt = null };
+        var source = new CombatContextSource(() => _root, _clock, game);
+        Assert.False((await source.ReadAsync(default)).LiveAvailable);
+        game.StartedAt = _clock.Now.AddMinutes(-1);
+        Assert.True((await source.ReadAsync(default)).LiveAvailable);
+        await Append("""{"timestamp":"2026-11-11T10:00:12Z","event":"Shutdown"}""");
+        Assert.False((await source.ReadAsync(default)).LiveAvailable);
+        File.Delete(Path.Combine(_root, "Status.json"));
+        Assert.False((await source.ReadAsync(default)).LiveAvailable);
+    }
+    [Fact]
+    public async Task OverheatingObservationUsesWarningAndFlagAndClearsOnContextChange()
+    {
+        await Fixture(); var source = Source();
+        await Append("""{"timestamp":"2026-11-11T10:00:12Z","event":"HeatWarning"}""");
+        await Status(flags: (1L << 24) | (1L << 20) | 8);
+        var result = await source.ReadAsync(default);
+        Assert.True(result.Callouts!.Overheating); Assert.Equal(_clock.Now, result.Callouts.HeatWarningAt);
+        await Append("""{"timestamp":"2026-11-11T10:00:12Z","event":"SupercruiseEntry"}""");
+        Assert.Null((await source.ReadAsync(default)).Callouts!.HeatWarningAt);
     }
     [Fact]
     public async Task FighterStatusDoesNotReuseMainShipHull()

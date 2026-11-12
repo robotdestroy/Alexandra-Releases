@@ -18,7 +18,7 @@
             <StackPanel>
                 <TextBlock Text="Startup" Foreground="{StaticResource AccentBrush}" Margin="0,0,0,12"/>
                 <CheckBox x:Name="OpenWithEliteBox" Content="Open Alexandra when Elite starts" Margin="0,0,0,8"/>
-                <TextBlock Text="Starts a quiet helper when you sign in to Windows. It waits for the actual game, then opens Alexandra once in your saved mode and position. No microphone, screenshots or AI usage while waiting. If you close Alexandra, it stays closed until your next game session. Turn this off and Save to stop the helper."
+                <TextBlock Text="Starts a quiet helper when you sign in to Windows. It waits for the actual game, then opens or restores Alexandra once in your saved mode and position without taking keyboard focus. Failed launches retry up to three times. No microphone, screenshots or AI usage while waiting. If you close Alexandra after it opens, it stays closed until your next game session. Turn this off and Save to stop the helper."
                            FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="24,0,0,0"/>
             </StackPanel>
         </Border>
@@ -48,7 +48,7 @@
         <TextBlock Text="Use a key from the OpenAI project paying for your usage. Leave blank to keep a saved key. Stored encrypted for this Windows user and preserved across updates. No key is included in the installer. ChatGPT subscriptions do not cover API costs."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
         <TextBlock x:Name="OnboardingCloudNotice" Visibility="Collapsed"
-                   Text="Save and start enables cloud voice and research. Your voice, relevant game data, and game images for visual questions go to OpenAI. Research uses public web sources. Replies use an AI-generated voice. Local gameplay journals and brief combat callouts are on; turn them off in Setup. Callout clips use API credit and are cached in memory. Optional conversation debug logging is off by default."
+                   Text="Save and start enables cloud voice and research. Your voice, relevant game data, and game images for visual questions go to OpenAI. Research uses public web sources. Replies use an AI-generated voice. Local gameplay journals (including short excerpts of stated gameplay plans) and brief combat callouts are on; turn them off in Setup. Callout clips use API credit and are cached in memory. Optional conversation debug logging is off by default."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
         </StackPanel>
         <StackPanel x:Name="AdditionalSettingsSection">
@@ -77,7 +77,7 @@
         <TextBlock Text="Keeps local game history, your requested goals/notes and dated research summaries across launches. Catches up from Elite journals, without recording background audio or screenshots. Relevant memories may be sent with your cloud questions. Stored as readable local data, separately per commander. Turning this off pauses memory; it does not delete saved items. Ask Alexandra to forget a specific saved item."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
         <CheckBox x:Name="SessionLogsBox" Content="Write a gameplay session journal" Margin="0,0,0,6"/>
-        <TextBlock Text="Local Markdown recaps, goals, mission progress, travel, trade and materials. Updated as you play; catches up after a restart. No extra AI charges or conversation recordings. Starts with new activity after enabling. Turning this off keeps existing files. Logs are readable personal gameplay history; review before sharing."
+        <TextBlock Text="Local Markdown recaps, goals, missions, combat, travel and materials. Includes short excerpts of clearly stated gameplay plans, separately from game-confirmed progress and community-goal rewards. Updated as you play; catches up from game journals after a restart. No extra AI charges or full conversation archive. Works with debug logging off. Starts with new activity after enabling. Turning this off keeps existing files. Review these personal logs before sharing."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
         <TextBlock x:Name="SessionLogPath" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
         <TextBlock x:Name="SessionLogStatus" FontSize="12" Foreground="{StaticResource AccentHoverBrush}" TextWrapping="Wrap"/>

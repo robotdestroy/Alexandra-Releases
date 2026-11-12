@@ -6,147 +6,114 @@ namespace Alexandra.Tests;
 public sealed class GameAutoLaunchTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 7, 12, 0, 0, TimeSpan.Zero);
-
     [Fact]
-    public void Disabled_never_queries_processes_or_launches()
+    public void DisabledNeverQueriesProcessesOrLaunches()
     {
-        var environment = new Environment { Enabled = false, Session = "game-1" };
-        Assert.Equal(GameAutoLaunchResult.Disabled, new GameAutoLaunchCoordinator(environment).Check(Now));
-        Assert.Equal(0, environment.Queries);
-        Assert.Equal(0, environment.Launches);
+        var e = new Environment { Enabled = false, Session = "game-1" };
+        Assert.Equal(GameAutoLaunchResult.Disabled, new GameAutoLaunchCoordinator(e).Check(Now));
+        Assert.Equal(0, e.Queries); Assert.Equal(0, e.Launches);
     }
-
     [Fact]
-    public void Waits_for_actual_game_and_launches_on_arrival()
+    public void WaitsForGameThenRequiresReadyAcknowledgement()
     {
-        var environment = new Environment();
-        var watcher = new GameAutoLaunchCoordinator(environment);
+        var e = new Environment(); var watcher = new GameAutoLaunchCoordinator(e);
         Assert.Equal(GameAutoLaunchResult.Waiting, watcher.Check(Now));
-        environment.Session = "game-1";
-        Assert.Equal(GameAutoLaunchResult.Launched, watcher.Check(Now.AddSeconds(3)));
-        Assert.Equal(1, environment.Launches);
+        e.Session = "game-1";
+        Assert.Equal(GameAutoLaunchResult.WaitingForReady, watcher.Check(Now.AddSeconds(3)));
+        Assert.Equal(1, e.Launches);
+        e.CompanionRunning = true;
+        Assert.Equal(GameAutoLaunchResult.WaitingForReady, watcher.Check(Now.AddSeconds(6)));
+        e.CompanionReady = true;
+        Assert.Equal(GameAutoLaunchResult.Launched, watcher.Check(Now.AddSeconds(9)));
+        Assert.Equal(1, e.Restores);
     }
-
     [Fact]
-    public void Starting_windows_with_game_already_running_opens_companion()
+    public void ExistingWindowIsRestoredOncePerNewGameSession()
     {
-        var environment = new Environment { Session = "game-1" };
-        Assert.Equal(GameAutoLaunchResult.Launched, new GameAutoLaunchCoordinator(environment).Check(Now));
-        Assert.Equal(1, environment.Launches);
-    }
-
-    [Fact]
-    public void Does_not_relaunch_after_user_closes_companion_in_same_session()
-    {
-        var environment = new Environment { Session = "game-1" };
-        var watcher = new GameAutoLaunchCoordinator(environment);
-        watcher.Check(Now);
-        for (var i = 1; i < 100; i++) watcher.Check(Now.AddSeconds(i * 3));
-        Assert.Equal(1, environment.Launches);
-    }
-
-    [Fact]
-    public void Existing_companion_is_not_activated_or_replaced()
-    {
-        var environment = new Environment { Session = "game-1", CompanionRunning = true };
-        var watcher = new GameAutoLaunchCoordinator(environment);
+        var e = new Environment { Session = "game-1", CompanionRunning = true, CompanionReady = true };
+        var watcher = new GameAutoLaunchCoordinator(e);
         Assert.Equal(GameAutoLaunchResult.AlreadyRunning, watcher.Check(Now));
-        environment.CompanionRunning = false;
-        Assert.Equal(GameAutoLaunchResult.Waiting, watcher.Check(Now.AddMinutes(1)));
-        Assert.Equal(0, environment.Launches);
+        watcher.Check(Now.AddSeconds(3)); Assert.Equal(1, e.Restores); Assert.Equal(0, e.Launches);
+        e.Session = "game-2"; watcher.Check(Now.AddSeconds(6)); Assert.Equal(2, e.Restores);
     }
-
     [Fact]
-    public void New_game_session_can_launch_again()
+    public void DoesNotReopenAfterUserClosesAcknowledgedWindow()
     {
-        var environment = new Environment { Session = "game-1" };
-        var watcher = new GameAutoLaunchCoordinator(environment);
-        watcher.Check(Now);
-        environment.Session = null;
-        watcher.Check(Now.AddSeconds(3));
-        environment.Session = "game-2";
-        Assert.Equal(GameAutoLaunchResult.Launched, watcher.Check(Now.AddSeconds(6)));
-        Assert.Equal(2, environment.Launches);
+        var e = new Environment { Session = "game-1" }; var watcher = new GameAutoLaunchCoordinator(e);
+        watcher.Check(Now); e.CompanionReady = true; watcher.Check(Now.AddSeconds(3));
+        e.CompanionReady = false; e.CompanionRunning = false;
+        for (var i = 1; i < 100; i++) Assert.Equal(GameAutoLaunchResult.Waiting, watcher.Check(Now.AddSeconds(i * 10)));
+        Assert.Equal(1, e.Launches);
     }
-
     [Fact]
-    public void Fast_game_restart_between_polls_is_detected_by_session_identity()
+    public void ImmediateExitOrUpdateGapRetriesWithoutTreatingProcessStartAsSuccess()
     {
-        var environment = new Environment { Session = "pid-42:start-1" };
-        var watcher = new GameAutoLaunchCoordinator(environment);
+        var e = new Environment { Session = "game-1" }; var watcher = new GameAutoLaunchCoordinator(e);
         watcher.Check(Now);
-        environment.Session = "pid-42:start-2";
-        Assert.Equal(GameAutoLaunchResult.Launched, watcher.Check(Now.AddSeconds(3)));
-        Assert.Equal(2, environment.Launches);
+        Assert.Equal(GameAutoLaunchResult.RetryLater, watcher.Check(Now.AddSeconds(29)));
+        Assert.Equal(GameAutoLaunchResult.WaitingForReady, watcher.Check(Now.AddSeconds(30)));
+        e.CompanionReady = true;
+        Assert.Equal(GameAutoLaunchResult.Launched, watcher.Check(Now.AddSeconds(33)));
+        Assert.Equal(2, e.Launches);
     }
-
     [Fact]
-    public void Unreadable_game_state_is_not_treated_as_game_exit()
+    public void SlowStartupNeverSpawnsDuplicates()
     {
-        var environment = new Environment { Session = "game-1" };
-        var watcher = new GameAutoLaunchCoordinator(environment);
-        watcher.Check(Now);
-        environment.Readable = false;
+        var e = new Environment { Session = "game-1", CompanionRunning = true }; var watcher = new GameAutoLaunchCoordinator(e);
+        for (var i = 0; i < 10; i++) Assert.Equal(GameAutoLaunchResult.WaitingForReady, watcher.Check(Now.AddMinutes(i)));
+        Assert.Equal(0, e.Launches);
+        e.CompanionReady = true; Assert.Equal(GameAutoLaunchResult.AlreadyRunning, watcher.Check(Now.AddMinutes(11)));
+    }
+    [Theory]
+    [InlineData(true)] [InlineData(false)]
+    public void FailedOrUnconfirmedLaunchesAreBounded(bool throwOnLaunch)
+    {
+        var e = new Environment { Session = "game-1", FailLaunch = throwOnLaunch }; var watcher = new GameAutoLaunchCoordinator(e);
+        for (var i = 0; i < 3; i++) watcher.Check(Now.AddSeconds(30 * i));
+        Assert.Equal(GameAutoLaunchResult.LaunchUnconfirmed, watcher.Check(Now.AddSeconds(90)));
+        Assert.Equal(3, e.Launches);
+        e.Session = "game-2"; watcher.Check(Now.AddSeconds(93)); Assert.Equal(4, e.Launches);
+    }
+    [Fact]
+    public void UnreadableProcessListDoesNotInventGameExit()
+    {
+        var e = new Environment { Session = "game-1", CompanionReady = true }; var watcher = new GameAutoLaunchCoordinator(e);
+        watcher.Check(Now); e.Readable = false;
         Assert.Equal(GameAutoLaunchResult.Unknown, watcher.Check(Now.AddSeconds(3)));
-        environment.Readable = true;
-        Assert.Equal(GameAutoLaunchResult.Waiting, watcher.Check(Now.AddSeconds(6)));
-        Assert.Equal(1, environment.Launches);
+        e.Readable = true; Assert.Equal(GameAutoLaunchResult.Waiting, watcher.Check(Now.AddSeconds(6)));
+        Assert.Equal(1, e.Restores);
     }
-
     [Fact]
-    public void Launch_failure_retries_slowly_instead_of_spinning()
+    public void ManualLaunchDuringRetryWinsWithoutAnotherProcess()
     {
-        var environment = new Environment { Session = "game-1", FailLaunch = true };
-        var watcher = new GameAutoLaunchCoordinator(environment);
+        var e = new Environment { Session = "game-1", FailLaunch = true }; var watcher = new GameAutoLaunchCoordinator(e);
+        watcher.Check(Now); e.CompanionRunning = true; e.CompanionReady = true;
+        Assert.Equal(GameAutoLaunchResult.Launched, watcher.Check(Now.AddSeconds(3)));
+        Assert.Equal(1, e.Launches); Assert.Equal(1, e.Restores);
+    }
+    [Fact]
+    public void RestoreFailureCanRetryAndDisableStopsAllActions()
+    {
+        var e = new Environment { Session = "game-1", CompanionReady = true, FailRestore = true }; var watcher = new GameAutoLaunchCoordinator(e);
         Assert.Equal(GameAutoLaunchResult.RetryLater, watcher.Check(Now));
-        watcher.Check(Now.AddSeconds(3));
-        watcher.Check(Now.AddSeconds(29));
-        Assert.Equal(1, environment.Launches);
-        environment.FailLaunch = false;
-        Assert.Equal(GameAutoLaunchResult.Launched, watcher.Check(Now.AddSeconds(30)));
-        Assert.Equal(2, environment.Launches);
+        e.FailRestore = false; Assert.Equal(GameAutoLaunchResult.AlreadyRunning, watcher.Check(Now.AddSeconds(3)));
+        e.Enabled = false; e.Session = "game-2";
+        Assert.Equal(GameAutoLaunchResult.Disabled, watcher.Check(Now.AddSeconds(6))); Assert.Equal(0, e.Launches);
     }
-
-    [Fact]
-    public void Manual_launch_during_retry_suppresses_automatic_launch()
-    {
-        var environment = new Environment { Session = "game-1", FailLaunch = true };
-        var watcher = new GameAutoLaunchCoordinator(environment);
-        watcher.Check(Now);
-        environment.CompanionRunning = true;
-        Assert.Equal(GameAutoLaunchResult.AlreadyRunning, watcher.Check(Now.AddSeconds(3)));
-        environment.CompanionRunning = false;
-        watcher.Check(Now.AddMinutes(1));
-        Assert.Equal(1, environment.Launches);
-    }
-
-    [Fact]
-    public void Disabling_stops_launches_immediately()
-    {
-        var environment = new Environment();
-        var watcher = new GameAutoLaunchCoordinator(environment);
-        watcher.Check(Now);
-        environment.Enabled = false;
-        environment.Session = "game-1";
-        Assert.Equal(GameAutoLaunchResult.Disabled, watcher.Check(Now.AddSeconds(3)));
-        Assert.Equal(0, environment.Launches);
-    }
-
     private sealed class Environment : IGameAutoLaunchEnvironment
     {
         public bool Enabled { get; set; } = true;
         public string? Session { get; set; }
         public bool Readable { get; set; } = true;
         public bool CompanionRunning { get; set; }
+        public bool CompanionReady { get; set; }
         public bool FailLaunch { get; set; }
+        public bool FailRestore { get; set; }
         public int Launches { get; private set; }
+        public int Restores { get; private set; }
         public int Queries { get; private set; }
-        public bool TryGetGameSession(out string? session)
-        { Queries++; session = Readable ? Session : null; return Readable; }
-        public void LaunchCompanion()
-        {
-            Launches++;
-            if (FailLaunch) throw new InvalidOperationException("synthetic launch failure");
-        }
+        public bool TryGetGameSession(out string? session) { Queries++; session = Readable ? Session : null; return Readable; }
+        public void LaunchCompanion() { Launches++; if (FailLaunch) throw new InvalidOperationException("synthetic launch failure"); }
+        public void RestoreCompanion() { if (FailRestore) throw new InvalidOperationException("synthetic restore failure"); Restores++; }
     }
 }

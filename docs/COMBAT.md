@@ -24,11 +24,11 @@ Live answers are instructed to be one short fact or next step. Normal conversati
 
 ## Freshness and limits
 
-- Elite's Status file updates when values change, not as a heartbeat. “Fresh” means observed within 15 seconds; it is not a live server guarantee.
+- Elite's Status file updates when values change, not as a heartbeat. Unchanged flags and pips remain available while the same running game process/session is verified. The separate `statusFresh` flag only describes whether the file was written within 15 seconds; answers use `statusAvailable` instead.
 - Target and hull percentages are last-reported observations, not continuous telemetry. Hull reports normally occur at damage thresholds.
 - No reliable own shield percentage, live ammunition/capacitor charge, range, enemy positions or damage-per-second is available from these records.
-- The local tailer checks about every 750 ms and catches up on demand. It covers up to the latest three journal files. Durable memory can provide additional session history for a relevant review.
-- Status older than a session/vehicle/travel transition is rejected. New commanders, ship changes, target loss, death and repairs clear affected observations.
+- The local tailer checks about every 750 ms and catches up on demand. It covers up to the latest three journal files, ordered by their first event timestamps so legacy filenames cannot displace current sessions. Durable memory can provide additional session history for a relevant review.
+- Status older than a session/vehicle/travel transition is rejected. A stopped, restarted or unverifiable game process makes cockpit state unavailable. New commanders, ship changes, target loss, death and repairs clear affected observations.
 - A live-data reply is dropped if cockpit evidence changes, the polling result ages beyond three seconds, or the tool result is over 12 seconds old before playback completes. The window shows “Combat changed · ask again”, including in minimal mode; no automatic spoken interruption is added.
 - Combat reviews group events by gameplay session, not inferred fight boundaries. Reward awards are not total kills or proof of redemption. An event sequence does not establish the cause of damage or death.
 - No flight controls, background screenshots or continuous HUD recognition. Optional callouts follow the bounded rules below, not freeform model decisions.
@@ -36,12 +36,13 @@ Live answers are instructed to be one short fact or next step. Normal conversati
 ## Optional contextual callouts
 
 - On by default. Right-click Alexandra → **Setup** → uncheck **Combat callouts** → **Save** to disable.
-- Main ship only, in normal space, with fresh cockpit data and danger or a recent incoming-fire report. Merely deploying hardpoints is not combat evidence. No fighter, SRV, on-foot, docked or supercruise callouts.
+- Main ship only, in normal space, with available, freshly polled cockpit data and danger or a recent incoming-fire report. Merely deploying hardpoints is not combat evidence. No fighter, SRV, on-foot, docked or supercruise callouts.
 - **Shields down.** Only after an observed up-to-down transition.
 - **Low hull. Forty percent or less.** / **Critical hull. Twenty percent or less.** Only on new journal damage reports while you pilot the main ship, not a loadout snapshot or damage to an NPC-piloted fighter.
 - **Heat damage detected.** Only for a new heat-damage event in that combat context.
+- **Overheating.** On a new heat warning or a newly active overheating flag, before damage is required. Suppressed if newer status shows the ship has cooled.
 - No catch-up announcements on startup, re-enable, journal/ship/session change or after losing fresh data.
-- At most one warning per poll; hull takes priority over shield loss, then heat damage. A 20-second global cooldown and 90-second per-warning cooldown prevent chatter. Critical hull may break the global cooldown after five seconds.
+- At most one warning per poll; hull takes priority over shield loss, then heat damage, then overheating. A 20-second global cooldown and 90-second per-warning cooldown prevent chatter. Critical hull may break the global cooldown after five seconds.
 - Events during push-to-talk, a reply, research, Setup or another callout are consumed without queuing. A short grace period after input/audio adds breathing room.
 - Incoming user speech, ordinary replies and opening Setup cancel pending/playing callouts immediately. No fallback Windows voice or spoken error.
 - Warnings must still match the current situation and be no more than eight seconds old. Slow generation, stale data, repairs, restored shields or a changed ship/session suppress playback.
@@ -57,7 +58,8 @@ No extra AI calls are used to build the local record. Detailed combat facts are 
 
 ## Verification
 
-Offline tests replay synthetic combat records, including main-ship/fighter separation, stale/missing/malformed Status, target scan levels/loss, commander changes, repairs, file replacement, partial lines, session-log persistence, canceled/aged replies, callout cooldowns, startup silence, voice matching and canceled/outdated playback.
+Offline tests replay synthetic combat records, including mixed legacy/current journal names, running/stopped/restarted games, unchanged/missing/malformed Status, main-ship/fighter separation, target scan levels/loss, commander changes, repairs, file replacement, partial lines, session-log migration, canceled/aged replies, callout cooldowns, overheating/cooling, startup silence, voice matching and canceled/outdated playback.
+When optional debug logging is enabled, source-session/availability transitions and selected callouts are logged without full cockpit payloads.
 They verify data and routing contracts, not live combat coaching quality. Test spoken answers in-game before relying on them.
 
 Data semantics follow Frontier's [Journal Manual](https://hosting.zaonce.net/community/journal/v34/Journal_Manual_v34.pdf), especially Status, ShipTargeted, HullDamage, ShieldState and combat events.

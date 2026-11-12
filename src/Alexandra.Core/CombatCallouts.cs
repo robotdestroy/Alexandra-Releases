@@ -1,6 +1,6 @@
 namespace Alexandra.Core;
 
-public enum CombatCalloutKind { ShieldsLost, LowHull, CriticalHull, HeatDamage }
+public enum CombatCalloutKind { ShieldsLost, LowHull, CriticalHull, HeatDamage, Overheating }
 public static class CombatCalloutLines
 {
     public const int MaxPcmBytes = 24000 * 2 * 6;
@@ -9,11 +9,13 @@ public static class CombatCalloutLines
         CombatCalloutKind.LowHull => "Low hull. Forty percent or less.",
         CombatCalloutKind.CriticalHull => "Critical hull. Twenty percent or less.",
         CombatCalloutKind.HeatDamage => "Heat damage detected.",
+        CombatCalloutKind.Overheating => "Overheating.",
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 }
 public sealed record CombatCalloutObservation(string ContextId, bool Eligible, bool CombatActive, bool? ShieldsUp,
-    DateTimeOffset StatusAt, DateTimeOffset? HullDamageAt, double? HullPercent, DateTimeOffset? HeatDamageAt);
+    DateTimeOffset StatusAt, DateTimeOffset? HullDamageAt, double? HullPercent, DateTimeOffset? HeatDamageAt,
+    DateTimeOffset? HeatWarningAt = null, bool? Overheating = null);
 public sealed record CombatCallout(CombatCalloutKind Kind, string ContextId, DateTimeOffset At);
 
 // Edge-triggered, fail-closed and bounded. Busy/disabled observations are consumed, never queued for later.
@@ -46,6 +48,11 @@ public sealed class CombatCalloutPolicy
             candidate = new(CombatCalloutKind.ShieldsLost, next.ContextId, next.StatusAt);
         if (candidate is null && next.HeatDamageAt is { } heatAt && next.HeatDamageAt != previous.HeatDamageAt && Recent(heatAt, now, 5))
             candidate = new(CombatCalloutKind.HeatDamage, next.ContextId, heatAt);
+        if (candidate is null && next.HeatWarningAt is { } warningAt && next.HeatWarningAt != previous.HeatWarningAt &&
+            Recent(warningAt, now, 5) && !(next.Overheating == false && next.StatusAt >= warningAt))
+            candidate = new(CombatCalloutKind.Overheating, next.ContextId, warningAt);
+        if (candidate is null && previous.Overheating == false && next.Overheating == true && Recent(next.StatusAt, now, 5))
+            candidate = new(CombatCalloutKind.Overheating, next.ContextId, next.StatusAt);
         if (candidate is null || _lastAttempt is { } attempt && now - attempt < TimeSpan.FromSeconds(candidate.Kind == CombatCalloutKind.CriticalHull ? 5 : 20) ||
             _attempts.TryGetValue(candidate.Kind, out var category) && now - category < TimeSpan.FromSeconds(90)) return null;
         _lastAttempt = now; _attempts[candidate.Kind] = now;
@@ -61,6 +68,8 @@ public sealed class CombatCalloutPolicy
             CombatCalloutKind.LowHull => state.HullDamageAt == callout.At && state.HullPercent is > 20 and <= 40,
             CombatCalloutKind.CriticalHull => state.HullDamageAt == callout.At && state.HullPercent is >= 0 and <= 20,
             CombatCalloutKind.HeatDamage => state.HeatDamageAt is { } at && at >= callout.At && Recent(at, now, 5),
+            CombatCalloutKind.Overheating => !(state.Overheating == false && state.StatusAt >= callout.At) &&
+                (state.Overheating == true || state.HeatWarningAt == callout.At && Recent(callout.At, now, 5)),
             _ => false
         };
     }

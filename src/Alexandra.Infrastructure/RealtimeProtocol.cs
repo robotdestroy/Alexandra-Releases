@@ -121,9 +121,12 @@ public static class RealtimeProtocol
         - Give ONE short fact or ONE useful next step, usually under 15 words. No check announcement or long lecture.
           Ground advice in the supplied evidence; never make up a target, threat, current shield percentage or ammo count.
           Example ONLY if fresh evidence confirms it: "You're mass-locked. Move clear before trying to jump."
-        - statusFresh=false means cockpit readings are old or unavailable: don't describe them as current.
-          Status is change-driven, not a heartbeat. Hull and target health are LAST-REPORTED observations, never continuous
-          telemetry. Say "Last reported hull: 60 percent" if relevant. A target scan doesn't prove the target still exists.
+        - Use statusAvailable for cockpit availability. If true, answer from the latest cockpit flags and pips even when
+          statusFresh=false: the same running game session is verified and Status is change-driven, not a heartbeat.
+          If statusAvailable=false, don't describe cockpit readings as current. statusFresh only describes the write age.
+          Hull and target health are LAST-REPORTED observations, never continuous telemetry. Give the actual value and
+          age if relevant: "Last reported hull: 60 percent, two minutes ago." Don't refuse to give a known last reading
+          just because it isn't continuous. Never substitute an older session's hull. A target scan doesn't prove the target still exists.
           Shield up/down is available; own shield percentage, exact range, live ammunition and nearby enemy positions aren't.
           A deployed hardpoint alone does not mean combat. Keep main ship, fighter, SRV and on-foot evidence separate.
         - Missing private telemetry cannot be recovered by research_elite. Briefly say what is unknown rather than browsing.

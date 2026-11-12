@@ -13,6 +13,7 @@ public sealed class CompanionMemory(Func<string> journalDirectory, string memory
     Func<bool>? sessionLogsEnabled = null) : ICompanionMemory
 {
     private readonly SemaphoreSlim _gate = new(1);
+    private readonly JournalFileCatalog _journalFiles = new();
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private MemoryDocument? _document;
     private string? _root, _path;
@@ -35,6 +36,38 @@ public sealed class CompanionMemory(Func<string> journalDirectory, string memory
         finally { _gate.Release(); }
     }
     public Task<GameContext> ReadAsync(CancellationToken token) => RecallAsync("", token);
+    public async Task<SessionLogAnchor?> CaptureSessionLogAnchorAsync(DateTimeOffset spokenAt, DateTimeOffset gameStartedAt, CancellationToken token)
+    {
+        if (sessionLogs is null || sessionLogsEnabled?.Invoke() == false) return null;
+        await _gate.WaitAsync(token);
+        try
+        {
+            await SyncLocked(token);
+            if (_document?.CurrentProfile is not { } scope || Current is not { } profile) return null;
+            var snapshot = Snapshot(scope);
+            if (!snapshot.GameLoaded || snapshot.SessionAt < gameStartedAt.AddSeconds(-2) ||
+                snapshot.SessionAt > spokenAt || spokenAt > _clock.GetUtcNow()) return null;
+            var anchor = _document.SessionLogs!.CaptureAnchor(SessionScope(scope), spokenAt, snapshot.System,
+                profile.Progress.Missions, enabled?.Invoke() == false ? [] : profile.Items, snapshot.CommunityGoals);
+            if (anchor is not null) { _dirty = true; await SaveLocked(token); }
+            return anchor;
+        }
+        finally { _gate.Release(); }
+    }
+    public async Task<bool> RecordSessionIntentAsync(SessionLogAnchor anchor, string userTranscript, CancellationToken token)
+    {
+        if (sessionLogs is null || sessionLogsEnabled?.Invoke() == false || SessionIntentPolicy.Extract(userTranscript).Count == 0) return false;
+        await _gate.WaitAsync(token);
+        try
+        {
+            await SyncLocked(token);
+            if (_document?.CurrentProfile is not { } scope || SessionScope(scope) != anchor.Scope ||
+                _document.SessionLogs?.RecordIntent(anchor, userTranscript) != true) return false;
+            _dirty = true; await SaveLocked(token); await ExportSessions(token);
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
     public async Task<GameContext> RecallAsync(string query, CancellationToken token)
     {
         if (enabled?.Invoke() == false)
@@ -229,11 +262,12 @@ public sealed class CompanionMemory(Func<string> journalDirectory, string memory
             await ExportSessions(token);
             return;
         }
-        var files = Directory.GetFiles(root, "Journal.*.log").Order(StringComparer.Ordinal).ToArray();
+        var files = _journalFiles.GetFiles(root);
         // If an already-read file was replaced/truncated, rebuild projections, preserving personal memories.
-        var newestSeen = _document!.Cursors.Keys.Order(StringComparer.Ordinal).LastOrDefault();
-        var rebuild = newestSeen is not null && files.Any(f => !_document.Cursors.ContainsKey(Path.GetFileName(f)) &&
-            StringComparer.Ordinal.Compare(Path.GetFileName(f), newestSeen) < 0);
+        var newestSeen = Array.FindLastIndex(files, f => _document!.Cursors.ContainsKey(Path.GetFileName(f)));
+        var rebuild = _document!.JournalOrderVersion != 1 && _document.Cursors.Count > 0 ||
+            files.Take(Math.Max(0, newestSeen)).Any(f => !_document.Cursors.ContainsKey(Path.GetFileName(f)));
+        if (_document.JournalOrderVersion != 1) { _document.JournalOrderVersion = 1; _dirty = true; }
         foreach (var file in files)
             if (_document!.Cursors.TryGetValue(Path.GetFileName(file), out var cursor))
             {
@@ -339,7 +373,7 @@ public sealed class CompanionMemory(Func<string> journalDirectory, string memory
         var snapshot = Snapshot(scope);
         snapshot.Apply(json);
         var sessionChanged = sessionLogs is not null && _document.SessionLogs?.Apply(SessionScope(scope), e, snapshot.System,
-            profile.Progress.Missions, enabled?.Invoke() == false ? [] : profile.Items) == true;
+            profile.Progress.Missions, enabled?.Invoke() == false ? [] : profile.Items, snapshot.CommunityGoals) == true;
         profile.Progress.Apply(e, snapshot.System);
         if (sessionChanged)
             _document.SessionLogs?.RefreshOpen(SessionScope(scope), profile.Progress.Missions,
@@ -427,6 +461,7 @@ public sealed class CompanionMemory(Func<string> journalDirectory, string memory
 }
 public sealed class MemoryDocument
 {
+    public int JournalOrderVersion { get; set; }
     public SessionLogbook? SessionLogs { get; set; }
     public int Version { get; set; } = 1;
     public string? CurrentProfile { get; set; }

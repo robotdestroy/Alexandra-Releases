@@ -47,7 +47,7 @@ public sealed class OnDemandGameRecords(Func<string> directory, TimeProvider? cl
             _ => throw new ArgumentOutOfRangeException(nameof(topic))
         };
         var records = new List<JsonElement>();
-        var files = Directory.GetFiles(path, "Journal.*.log").Order(StringComparer.Ordinal).ToArray();
+        var files = new JournalFileCatalog().GetFiles(path);
         var stamps = files.ToDictionary(f => f, f => { var info = new FileInfo(f); return (info.Length, info.LastWriteTimeUtc); });
         var unreadable = 0;
         foreach (var file in files)

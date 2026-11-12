@@ -84,6 +84,48 @@ public sealed class CombatCalloutTests
         Assert.Null(Observe(fresh, Context(21, heatAt: Start)));
     }
     [Fact]
+    public void OverheatingWarnsBeforeDamageOnceAndStopsWhenCooled()
+    {
+        CombatContext Hot(int second, bool hot) => Context(second) with {
+            Callouts = Context(second).Callouts! with { Overheating = hot, HeatWarningAt = second > 0 ? Start.AddSeconds(1) : null }
+        };
+        var p = new CombatCalloutPolicy(); Observe(p, Hot(0, false));
+        var warning = Observe(p, Hot(1, true));
+        Assert.Equal(CombatCalloutKind.Overheating, warning!.Kind);
+        Assert.Equal("Overheating.", CombatCalloutLines.Text(warning.Kind));
+        Assert.Null(Observe(p, Hot(2, true)));
+        Assert.True(CombatCalloutPolicy.IsRelevant(warning, Hot(2, true), Start.AddSeconds(2)));
+        Assert.False(CombatCalloutPolicy.IsRelevant(warning, Hot(2, false), Start.AddSeconds(2)));
+        Assert.Null(Observe(p, Hot(3, false)));
+        Assert.Null(Observe(p, Hot(4, true))); // Cooldown, even if the flag flickers.
+    }
+    [Fact]
+    public void RecentHeatWarningWorksBeforeSidecarUpdateButNeverReplaysOnStartupOrAfterBusy()
+    {
+        CombatContext Warning(int second) => Context(second) with {
+            Callouts = Context(second).Callouts! with { Overheating = false, StatusAt = Start, HeatWarningAt = Start.AddSeconds(1) }
+        };
+        var p = new CombatCalloutPolicy(); Observe(p, Context(0));
+        Assert.Equal(CombatCalloutKind.Overheating, Observe(p, Warning(1))!.Kind);
+        var coldStart = new CombatCalloutPolicy(); Assert.Null(Observe(coldStart, Warning(1)));
+        Assert.Null(Observe(coldStart, Warning(2)));
+        var busy = new CombatCalloutPolicy(); Observe(busy, Context(0));
+        Assert.Null(Observe(busy, Warning(1), quiet: false)); Assert.Null(Observe(busy, Warning(2)));
+    }
+    [Fact]
+    public void HeatDamageTakesPriorityOverOverheatingAndCriticalHullTakesPriorityOverBoth()
+    {
+        var hot = Context(1, heatAt: Start.AddSeconds(1)) with {
+            Callouts = Context(1, heatAt: Start.AddSeconds(1)).Callouts! with { Overheating = true, HeatWarningAt = Start.AddSeconds(1) }
+        };
+        var p = new CombatCalloutPolicy(); Observe(p, Context(0));
+        Assert.Equal(CombatCalloutKind.HeatDamage, Observe(p, hot)!.Kind);
+        var critical = new CombatCalloutPolicy(); Observe(critical, Context(0));
+        Assert.Equal(CombatCalloutKind.CriticalHull, Observe(critical, hot with {
+            Callouts = hot.Callouts! with { HullDamageAt = Start.AddSeconds(1), HullPercent = 20 }
+        })!.Kind);
+    }
+    [Fact]
     public void CooldownsLimitChatterButPermitCriticalEscalationAfterFiveSeconds()
     {
         var p = new CombatCalloutPolicy(); Observe(p, Context(0));

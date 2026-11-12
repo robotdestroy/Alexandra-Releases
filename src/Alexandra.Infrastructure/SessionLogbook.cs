@@ -33,7 +33,7 @@ public sealed class SessionLogbook
     }
 
     public bool Apply(string scope, JsonElement e, string? system, IReadOnlyDictionary<long, MissionMemory> missions,
-        IEnumerable<MemoryItem> goals)
+        IEnumerable<MemoryItem> goals, JsonElement? communityBaseline = null)
     {
         var at = MemoryProgress.Time(e).ToUniversalTime();
         if (!Enabled || RecordingSince is null || at < RecordingSince) return false;
@@ -62,13 +62,19 @@ public sealed class SessionLogbook
                 "MarketBuy" or "MarketSell" or "MissionAccepted" or "MissionCompleted" or "MaterialCollected" or
                 "EngineerCraft" or "ColonisationContribution" or "UnderAttack" or "HullDamage" or "ShieldState" or
                 "HeatWarning" or "HeatDamage" or "Bounty" or "FactionKillBond" or "CapShipBond" or "Died" or
-                "Interdicted" or "EscapeInterdiction" or "FighterDestroyed" or "PVPKill")) return false;
+                "Interdicted" or "EscapeInterdiction" or "FighterDestroyed" or "PVPKill" or
+                "CommunityGoalJoin" or "CommunityGoalReward" or "CommunityGoalDiscard" or "RedeemVoucher" or
+                "SellExplorationData" or "MultiSellExplorationData" or "SellOrganicData")) return false;
             session = Start(scope, at, true, system, goals.Where(g => g.UpdatedAt <= at), missions);
         }
+        if (session.CommunityGoals.Goals.Count == 0 && communityBaseline is { } baseline)
+            session.CommunityGoals.Apply(baseline);
         if (at < session.LastEventAt) return false;
         session.LastEventAt = at;
         session.Revision++;
         session.Combat.Apply(e);
+        session.CommunityGoals.Apply(e);
+        session.Statistics.Apply(e);
         string? Text(string key) => MemoryProgress.Text(e, key);
         long Count(string key)
         {
@@ -159,6 +165,28 @@ public sealed class SessionLogbook
         session.Revision++;
     }
 
+    public SessionLogAnchor? CaptureAnchor(string scope, DateTimeOffset spokenAt, string? system,
+        IReadOnlyDictionary<long, MissionMemory> missions, IEnumerable<MemoryItem> goals, JsonElement? communityBaseline)
+    {
+        if (!Enabled || RecordingSince is null || spokenAt < RecordingSince) return null;
+        var session = Sessions.LastOrDefault(s => s.Scope == scope && s.EndReason is null);
+        // Caller has verified a loaded game session. Speech need not wait for the next journal event.
+        session ??= Start(scope, spokenAt, true, system, goals, missions);
+        if (spokenAt < session.StartedAt) return null;
+        if (session.CommunityGoals.Goals.Count == 0 && communityBaseline is { } baseline) session.CommunityGoals.Apply(baseline);
+        return new(scope, session.Id, spokenAt);
+    }
+
+    public bool RecordIntent(SessionLogAnchor anchor, string transcript)
+    {
+        if (!Enabled || RecordingSince is null || anchor.SpokenAt < RecordingSince) return false;
+        var session = Sessions.SingleOrDefault(s => s.Scope == anchor.Scope && s.Id == anchor.SessionId && s.EndReason is null);
+        if (session is null || anchor.SpokenAt < session.StartedAt) return false;
+        var changed = session.AddStatedPlans(transcript, anchor.SpokenAt);
+        if (changed) session.Revision++;
+        return changed;
+    }
+
     // Watermarks prevent replay duplication; only live or unexported sessions need full projections.
     // Markdown files remain until the user removes them.
     public void Compact()
@@ -171,7 +199,11 @@ public sealed class SessionLogbook
             !string.IsNullOrWhiteSpace(s.Scope) && s.Revision > 0 && s.WrittenRevision >= 0 && s.WrittenRevision <= s.Revision &&
             s.StartedAt <= s.LastEventAt && s.Systems is not null && s.Highlights is not null && s.MissionChanges is not null &&
             s.GoalChanges is not null && s.OpenGoals is not null && s.OpenMissions is not null && s.Materials is not null &&
-            s.Combat is not null && s.Combat.Timeline is not null);
+            s.Combat is not null && s.Combat.Timeline is not null && s.Statistics is not null && s.StatedPlans is not null &&
+            s.StatedPlans.All(p => p is not null && !string.IsNullOrWhiteSpace(p.Text)) &&
+            s.CommunityGoals is not null && s.CommunityGoals.Goals is not null && s.CommunityGoals.Events is not null &&
+            s.CommunityGoals.Goals.Values.All(g => g is not null && !string.IsNullOrWhiteSpace(g.Title) &&
+                (g.InitialContribution is null) == (g.LatestContribution is null)));
     private GameplaySession Start(string scope, DateTimeOffset at, bool partial, string? system,
         IEnumerable<MemoryItem> goals, IReadOnlyDictionary<long, MissionMemory> missions)
     {
@@ -201,6 +233,7 @@ public sealed class SessionLogbook
     }
 }
 
+public sealed record StatedSessionPlan(DateTimeOffset At, string Text);
 public sealed class SessionWatermark
 {
     public DateTimeOffset At { get; set; }
@@ -236,6 +269,38 @@ public sealed class GameplaySession
     public List<string> OpenMissions { get; set; } = [];
     public Dictionary<string, long> Materials { get; set; } = [];
     public CombatSummary Combat { get; set; } = new();
+    public SessionCommunityGoals CommunityGoals { get; set; } = new();
+    public SessionStatistics Statistics { get; set; } = new();
+    public List<StatedSessionPlan> StatedPlans { get; set; } = [];
+
+    public bool AddStatedPlans(string transcript, DateTimeOffset at)
+    {
+        var changed = false;
+        foreach (var excerpt in SessionIntentPolicy.Extract(transcript))
+        {
+            var text = SessionLogbook.Clean(excerpt);
+            if (StatedPlans.Count >= 24 || StatedPlans.Any(p => string.Equals(p.Text, text, StringComparison.OrdinalIgnoreCase))) continue;
+            StatedPlans.Add(new(at.ToUniversalTime(), text)); changed = true;
+        }
+        return changed;
+    }
+
+    public IEnumerable<string> SummaryStatistics()
+    {
+        static string N(decimal n) => n.ToString("N0", CultureInfo.InvariantCulture);
+        var received = TradeEarned + CommunityGoals.RewardCredits + CommunityGoals.RedeemedCombatBonds +
+            Statistics.MissionRewards + Statistics.OtherVoucherPayments + Statistics.ExplorationPayments + Statistics.OrganicDataPayments;
+        if (received > 0) yield return $"Credits received: {N(received)} CR";
+        if (Statistics.ConfirmedPlayerKills > 0) yield return $"Confirmed player kills: {N(Statistics.ConfirmedPlayerKills)}";
+        if (Combat.BountyAwards > 0) yield return $"Bounty awards: {N(Combat.BountyAwards)}";
+        if (Combat.BondAwards > 0) yield return $"Combat bond awards: {N(Combat.BondAwards)}";
+        if (MissionsCompleted > 0) yield return $"Missions completed: {N(MissionsCompleted)}";
+        if (CommunityGoals.RewardsClaimed > 0) yield return $"Community-goal rewards claimed: {N(CommunityGoals.RewardsClaimed)}";
+        if (Jumps > 0) yield return $"Jumps: {N(Jumps)}";
+        if (Sold > 0) yield return $"Cargo sold: {N(Sold)} t";
+        if (Materials.Values.Sum() is > 0 and var materials) yield return $"Materials collected: {N(materials)} units";
+        if (Combat.Losses > 0) yield return $"Ship/commander losses: {N(Combat.Losses)}";
+    }
 
     public SessionLogFile Render()
     {
@@ -248,7 +313,16 @@ public sealed class GameplaySession
         b.AppendLine($"- Recorded span: {Math.Max(0, (LastEventAt - StartedAt).TotalMinutes):0} minutes (not an active-play timer)");
         if (Ship is not null) b.AppendLine($"- Ship: {Ship}");
         b.AppendLine().AppendLine("## Summary").AppendLine();
+        var statistics = SummaryStatistics().ToArray();
+        if (statistics.Length > 0)
+        {
+            b.AppendLine("### Session stats").AppendLine();
+            foreach (var stat in statistics) b.AppendLine("- " + stat);
+            b.AppendLine();
+        }
         var recap = new List<string>();
+        if (StatedPlans.Count > 0) recap.Add("Your stated session plans: " + string.Join("; ", StatedPlans.Take(4).Select(p => "“" + p.Text + "”")) + ".");
+        recap.AddRange(CommunityGoals.Summary());
         if (StartSystem is not null) recap.Add(Incomplete ? $"Your first recorded location was {StartSystem}." : $"You started in {StartSystem}.");
         if (Jumps > 0) recap.Add($"You made {Jumps} jump{(Jumps == 1 ? "" : "s")} and visited {Systems.Count} recorded system{(Systems.Count == 1 ? "" : "s")}.");
         if (Bought > 0 || Sold > 0) recap.Add($"You bought {Bought} t and sold {Sold} t of commodities.");
@@ -257,7 +331,9 @@ public sealed class GameplaySession
         if (GoalChanges.Count > 0) recap.Add($"You recorded {GoalChanges.Count} update{(GoalChanges.Count == 1 ? "" : "s")} to your personal goals.");
         if (EndSystem is not null) recap.Add($"Your last recorded location was {EndSystem}{(LastStation is null ? "" : $", docked at {LastStation}")}.");
         b.AppendLine(recap.Count == 0 ? "No supported activity highlights have been recorded yet." : string.Join(" ", recap));
-        Section(b, "Goals and missions", GoalChanges.Concat(MissionChanges), "No goal or mission changes recorded.");
+        Section(b, "Stated session plans", StatedPlans.Select(p => $"{p.At:HH:mm} UTC — You said: “{p.Text}” (intent, not proof of completion)."));
+        Section(b, "Saved goals and missions", GoalChanges.Concat(MissionChanges), "No saved personal-goal or mission changes recorded.");
+        Section(b, "Community goals and redeemed bonds", CommunityGoals.Details());
         Section(b, "Highlights", Highlights, "No additional highlights recorded.");
         Section(b, "Combat after-action", Combat.Markdown());
         if (Materials.Count > 0) Section(b, "Materials collected", Materials.OrderBy(p => p.Key).Select(p => $"{p.Key}: +{p.Value} collected (not current inventory)"));
@@ -268,8 +344,9 @@ public sealed class GameplaySession
         Section(b, "Pick up next time", OpenGoals.Select(g => "Personal goal: " + g).Concat(OpenMissions.Select(m => "Mission last seen active: " + m)), "No open goals or missions recorded.");
         b.AppendLine().AppendLine("## About this log").AppendLine();
         if (Incomplete) b.AppendLine("Coverage is partial: recording began mid-session, was paused, or some journal history was unreadable.");
-        b.AppendLine("Generated locally from Elite journal evidence and explicitly saved goals. No extra API calls, audio, screenshots or full conversation transcripts. Personal goal completion is user-confirmed; travel alone does not prove it.");
+        b.AppendLine("Generated locally from Elite journal evidence, explicitly saved goals and short first-person gameplay-plan excerpts from your speech. No extra API calls, audio, screenshots or full conversation transcripts. Stated plans are not game facts. Personal goal completion is user-confirmed; travel alone does not prove it.");
         b.AppendLine("Times are UTC. Open-session status is last-known, not proof the game is still running. Lists are bounded to keep long sessions readable. Missing data is not a completed goal.");
+        b.AppendLine("Session stats show only positive recorded values. Credits received are supported payouts and sales, not net profit or a full balance change. Combat awards are not a unique ship-kill count; only journal-confirmed player kills are counted as kills.");
         b.AppendLine("This file is automatically refreshed. Keep personal edits in a separate file; completed logs are retained until you remove them.");
         return new(Id, StartedAt, b.ToString());
     }

@@ -43,11 +43,14 @@ public partial class MainWindow : Window
     private (int Turn, string Scope, string Json)? _lastRecords;
     private readonly ICompanionMemory _memory;
     private readonly ICombatContextSource _combat;
+    private readonly IGameSessionSource _gameSession = new WindowsGameSessionSource();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, Task<SessionLogAnchor?>> _sessionLogTurns = new();
     private readonly CombatReplyGuard _combatReplies = new();
     private readonly CombatCalloutPolicy _calloutPolicy = new();
     private readonly IStreamingAudioPlayer _calloutAudio = new StreamingAudioPlayer();
     private readonly CombatCalloutPlayer _callouts;
     private DateTimeOffset _calloutQuietUntil;
+    private string? _combatDiagnosticState;
     private int _discardingCombatTurn = -1;
     private readonly ISystemResolver _systems;
     private readonly CopiedDestinationMemory _copiedDestination = new();
@@ -89,7 +92,7 @@ public partial class MainWindow : Window
             sessionLogsEnabled: () => _settings.Value.SessionLogsEnabled);
         _game = new JournalContextSource(() => _settings.Value.JournalDirectory); // Read-only fallback if the memory file is unavailable.
         _records = new OnDemandGameRecords(() => _settings.Value.JournalDirectory);
-        _combat = new CombatContextSource(() => _settings.Value.JournalDirectory);
+        _combat = new CombatContextSource(() => _settings.Value.JournalDirectory, gameSession: _gameSession);
         _callouts = new CombatCalloutPlayer(new RealtimeCombatCalloutSource(() => new RealtimeWebSocketTransport()), _calloutAudio);
         _callouts.Failed += () => _log.Write("combat.callout_unavailable", "Skipped; automatic audio paused for two minutes. Conversation is unchanged.");
         _systems = new EdsmSystemResolver(_http);
@@ -192,6 +195,8 @@ public partial class MainWindow : Window
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or JsonException)
                 { /* Optional telemetry must never interrupt the normal voice connection. */ }
                 Ui(() => {
+                    if (_combat.Latest?.DiagnosticState is { } diagnostic && diagnostic != _combatDiagnosticState)
+                    { _combatDiagnosticState = diagnostic; _log.Write("combat.telemetry", diagnostic); }
                     if (_speaker.HasUnplayedAudio && !_setupOpen && _recordOwner is null &&
                         !_combatReplies.CanPlay(_voice.CurrentTurn, _combat.Latest, DateTimeOffset.UtcNow))
                         DiscardStaleCombatReply(_voice, _voice.CurrentTurn);
@@ -211,6 +216,7 @@ public partial class MainWindow : Window
             QuietForCallout() && !_callouts.IsActive);
         if (!allowed) { _callouts.Cancel(); return; }
         if (callout is null) return;
+        _log.Write("combat.callout_selected", callout.Kind.ToString());
         try
         {
             var voice = _settings.Value.Voice;
@@ -255,9 +261,14 @@ public partial class MainWindow : Window
         _combatReplies.Clear(); _discardingCombatTurn = -1;
         _savedScreenshots.Clear();
         _pasteTurns.Clear(); // Turn numbers restart when settings replace the voice session.
+        _sessionLogTurns.Clear();
         var session = new RealtimeVoiceSession(() => new RealtimeWebSocketTransport(),
             _settings.ReadKey, () => _settings.Value.Voice, RunToolAsync, _log);
         _voice = session;
+        session.TranscriptReceived += (turn, role, transcript) => {
+            if (role == "user" && ReferenceEquals(session, _voice) && _sessionLogTurns.TryRemove(turn, out var anchor))
+                _ = RecordSessionPlanAsync(session, anchor, transcript);
+        };
         session.AudioReceived += frame => Ui(() => {
             if (session != _voice || frame.Turn != session.CurrentTurn || _recordOwner is not null || _setupOpen) return;
             _callouts.Cancel();
@@ -378,21 +389,45 @@ public partial class MainWindow : Window
             if (read != pcm.Length) throw new InvalidOperationException("The recording was incomplete. Please try again.");
             _busy = true; StatusText.Text = "Thinking";
             UpdateThinkingSound(_speaker.HasUnplayedAudio);
-            _ = SubmitRecordingAsync(_beginTurn, pcm, uiTurn);
+            _ = SubmitRecordingAsync(_beginTurn, pcm, uiTurn, _recordStarted);
         }
         catch (Exception ex) { if (!_closed) ShowError(ex); }
         finally { _recordGate.Release(); }
     }
-    private async Task SubmitRecordingAsync(Task<int> begin, byte[] pcm, int uiTurn)
+    private async Task SubmitRecordingAsync(Task<int> begin, byte[] pcm, int uiTurn, DateTimeOffset spokenAt)
     {
         try
         {
             var voiceTurn = await begin;
             if (_closed || uiTurn != _uiTurn) return;
+            foreach (var old in _sessionLogTurns.Keys.Where(t => t < voiceTurn - 24).ToArray()) _sessionLogTurns.TryRemove(old, out _);
+            _sessionLogTurns[voiceTurn] = CaptureSessionPlanAnchorAsync(spokenAt);
             await _voice.SubmitAudioAsync(voiceTurn, pcm);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { if (!_closed && uiTurn == _uiTurn) { _busy = false; ShowError(ex); } }
+    }
+    private async Task<SessionLogAnchor?> CaptureSessionPlanAnchorAsync(DateTimeOffset spokenAt)
+    {
+        try
+        {
+            if (!_settings.Value.SessionLogsEnabled || _gameSession.StartedAt is not { } started) return null;
+            return await _memory.CaptureSessionLogAnchorAsync(spokenAt, started, _lifetime.Token);
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (Exception ex) { _log.Write("session.plan_unavailable", ex.GetType().Name); return null; }
+    }
+    private async Task RecordSessionPlanAsync(IVoiceSession owner, Task<SessionLogAnchor?> pending, string transcript)
+    {
+        try
+        {
+            var anchor = await pending;
+            if (anchor is null || _closed || !ReferenceEquals(owner, _voice)) return;
+            if (await _memory.RecordSessionIntentAsync(anchor, transcript, _lifetime.Token))
+                _log.Write("session.plan_saved", "A stated gameplay plan was added locally to this session log.");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _log.Write("session.plan_unavailable", ex.GetType().Name); }
     }
     private async Task<string> RunToolAsync(VoiceToolCall call, CancellationToken token)
     {
@@ -412,7 +447,7 @@ public partial class MainWindow : Window
                 if (_closed || voice != _voice || call.Turn != voice.CurrentTurn) throw new OperationCanceledException();
                 _combatReplies.Arm(call.Turn, combatContext, kind);
             });
-            _log.Write("combat.context", kind + "; fresh cockpit=" + combatContext.LiveAvailable, call.Turn);
+            _log.Write("combat.context", kind + "; cockpit available=" + combatContext.LiveAvailable, call.Turn);
             return CombatContextSource.ToolResult(combatContext, kind);
         }
         if (call.Name == "paste_destination")
@@ -769,6 +804,15 @@ public partial class MainWindow : Window
         StatusText.Text = "Conversation cleared · hold to talk";
     }
     private void LogsClick(object sender, RoutedEventArgs e) => new DiagnosticsWindow(_log) { Owner = this }.ShowDialog();
+    private void SessionLogsClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Directory.CreateDirectory(SettingsStore.SessionLogDirectory);
+            Process.Start(new ProcessStartInfo(SettingsStore.SessionLogDirectory) { UseShellExecute = true });
+        }
+        catch (Exception ex) { ShowError(ex); }
+    }
     private void ScreenshotsClick(object sender, RoutedEventArgs e)
     {
         try

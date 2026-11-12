@@ -7,9 +7,11 @@ using Alexandra.Core;
 namespace Alexandra.Infrastructure;
 
 // A small, in-memory tailer for cockpit questions. No memory-file writes, history search, network or screenshots.
-public sealed class CombatContextSource(Func<string> directory, TimeProvider? clock = null) : ICombatContextSource
+public sealed class CombatContextSource(Func<string> directory, TimeProvider? clock = null,
+    IGameSessionSource? gameSession = null) : ICombatContextSource
 {
     private readonly SemaphoreSlim _gate = new(1);
+    private readonly JournalFileCatalog _journalFiles = new();
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly Dictionary<string, Cursor> _cursors = [];
     private readonly HashSet<string> _seen = [];
@@ -29,7 +31,10 @@ public sealed class CombatContextSource(Func<string> directory, TimeProvider? cl
             var root = Path.GetFullPath(directory());
             if (!string.Equals(root, _root, StringComparison.OrdinalIgnoreCase)) { Reset(); _root = root; }
             if (!Directory.Exists(root)) { Reset(); return PublishUnknown("Elite journal folder unavailable."); }
-            var files = Directory.GetFiles(root, "Journal.*.log").Order(StringComparer.Ordinal).TakeLast(3).ToArray();
+            var files = _journalFiles.GetFiles(root).TakeLast(3).ToArray();
+            // An imported older part must be replayed before already-seen newer records.
+            var newestSeen = Array.FindLastIndex(files, _cursors.ContainsKey);
+            if (files.Take(Math.Max(0, newestSeen)).Any(f => !_cursors.ContainsKey(f))) Reset();
             if (files.Length == 0) { Reset(); return PublishUnknown("No Elite journal files found."); }
             foreach (var file in files)
             {
@@ -49,13 +54,15 @@ public sealed class CombatContextSource(Func<string> directory, TimeProvider? cl
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
             var now = _clock.GetUtcNow();
-            var combat = JsonSerializer.SerializeToElement(_snapshot.CombatView(status, now), Json);
+            bool? activeSession = gameSession is null ? null : gameSession.StartedAt is { } started && started <= now &&
+                _snapshot.SessionAt >= started.AddSeconds(-2) && _snapshot.SessionAt <= now;
+            var combat = JsonSerializer.SerializeToElement(_snapshot.CombatView(status, now, activeSession), Json);
             var loadout = _snapshot.CombatFit();
-            var available = combat.GetProperty("loaded").GetBoolean() && combat.GetProperty("statusFresh").GetBoolean() &&
+            var available = combat.GetProperty("loaded").GetBoolean() && combat.GetProperty("statusAvailable").GetBoolean() &&
                 combat.GetProperty("vehicle").GetString() is "main_ship" or "fighter";
             var evidence = JsonSerializer.Serialize(new {
                 root = Hash(root.ToUpperInvariant()), sessionAt = combat.GetProperty("sessionAt"),
-                loaded = combat.GetProperty("loaded"), fresh = combat.GetProperty("statusFresh"),
+                loaded = combat.GetProperty("loaded"), available,
                 vehicle = combat.GetProperty("vehicle"), cockpit = combat.GetProperty("cockpit"),
                 target = combat.GetProperty("lastTargetScan"), hull = combat.GetProperty("lastReportedHull"),
                 lastAttack = combat.GetProperty("lastAttack"), loadout, currentSystem = _snapshot.System
@@ -63,12 +70,13 @@ public sealed class CombatContextSource(Func<string> directory, TimeProvider? cl
             var callouts = CalloutObservation(combat, Hash(root.ToUpperInvariant() + "|" +
                 combat.GetProperty("sessionAt").GetRawText() + "|" + combat.GetProperty("contextAt").GetRawText() +
                 "|" + JsonSerializer.Serialize(loadout)), available);
+            var diagnostic = $"Cockpit available={available}; loaded={combat.GetProperty("loaded")}; game session active={activeSession}; journals={string.Join(",", files.Select(Path.GetFileName))}; session={combat.GetProperty("sessionAt")}";
             var result = new CombatContext(JsonSerializer.Serialize(new {
                 combat, loadout, currentSystem = _snapshot.System,
                 historyLimited = true, historyNote = "Fast context covers up to three latest journal files; older combat history may be absent. Use commander memory for older session reviews.",
                 skippedOrReplacedData = _partial,
                 responsePolicy = "For a live cockpit question, give one short fact or one relevant next step. No research_elite lookup for missing private telemetry. Target and hull percentages must be described as last reported, not live. Do not diagnose causation from a timeline alone."
-            }, Json), Hash(evidence), now, available, callouts);
+            }, Json), Hash(evidence), now, available, callouts, diagnostic);
             Volatile.Write(ref _latest, result); return result;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
@@ -122,7 +130,8 @@ public sealed class CombatContextSource(Func<string> directory, TimeProvider? cl
         var underAttack = CombatState.Bool(attack, "recent") == true && MemoryProgress.Text(attack, "vehicle") == "You";
         return new(scope, eligible, underAttack || CombatState.Bool(cockpit, "inDanger") == true,
             CombatState.Bool(cockpit, "shieldsUp"), Time(combat, "statusObservedAt") ?? DateTimeOffset.MinValue,
-            Time(hull, "at"), CombatState.Percent(hull, "percent"), Time(combat, "lastHeatDamageAt"));
+            Time(hull, "at"), CombatState.Percent(hull, "percent"), Time(combat, "lastHeatDamageAt"),
+            Time(combat, "lastHeatWarningAt"), CombatState.Bool(cockpit, "overheating"));
     }
     public static string ToolResult(CombatContext context, CombatQueryKind kind)
     {
@@ -142,7 +151,8 @@ public sealed class CombatContextSource(Func<string> directory, TimeProvider? cl
     }
     private CombatContext PublishUnknown(string reason)
     {
-        var result = new CombatContext(JsonSerializer.Serialize(new { available = false, reason }), "unavailable", _clock.GetUtcNow(), false);
+        var result = new CombatContext(JsonSerializer.Serialize(new { available = false, reason }), "unavailable", _clock.GetUtcNow(), false,
+            DiagnosticState: reason);
         Volatile.Write(ref _latest, result); return result;
     }
     private static async Task<string> Prefix(string path, int length, CancellationToken token)

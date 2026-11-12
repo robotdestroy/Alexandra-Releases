@@ -1,6 +1,6 @@
 # Alexandra
 
-Voice companion for Elite Dangerous | Windows friends beta 0.1.25
+Voice companion for Elite Dangerous | Windows friends beta 0.1.26
 
 ## Get started
 
@@ -18,14 +18,14 @@ Voice companion for Elite Dangerous | Windows friends beta 0.1.25
 ## Remember what matters
 
 - Save goals, notes and preferences. Ask "What was I working on?" or "Forget that note."
-- Local Markdown session journals track travel, trades, missions, goals and combat. Open session logs in Setup.
-- Journals are on by default and catch up from available game records after time away. Starts with new activity after enabling.
+- Local Markdown journals track stated plans, confirmed CG progress/rewards, travel, trades, missions and combat. Right-click > Open session logs.
+- Quick stats show recorded earnings, combat awards and completed missions when available. Journals catch up from game records after time away.
 
 ## Combat companion
 
 - "Check my pips" or "What's my target?" gets a short answer from local game data.
 - "How did that fight go?" reviews recorded damage, rewards and losses, not an invented cause.
-- Optional callouts warn of shield loss, low hull and heat damage. On by default; turn off in Setup.
+- Optional callouts warn of shield loss, low hull, overheating and heat damage. On by default; turn off in Setup.
 - Callouts skip busy or stale moments. Selected-voice clips use API credit initially, then are cached for this launch.
 
 ## See the game and copy destinations

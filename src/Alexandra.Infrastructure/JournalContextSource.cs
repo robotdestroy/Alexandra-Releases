@@ -18,7 +18,7 @@ public sealed class JournalContextSource(Func<string> directory) : IGameContextS
         if (!Directory.Exists(path)) return new(null, "{}", "Elite journal folder not found.");
         var state = new JournalSnapshot();
         var skipped = 0;
-        var files = Directory.GetFiles(path, "Journal.*.log").Order(StringComparer.Ordinal).ToArray();
+        var files = new JournalFileCatalog().GetFiles(path);
         // Bound startup work; explicitly surface incomplete history.
         var bounded = files.TakeLast(80).ToArray();
         foreach (var file in bounded)
@@ -60,6 +60,8 @@ public sealed class JournalContextSource(Func<string> directory) : IGameContextS
         private long? _shipId;
         private DateTimeOffset? _latest;
         public DateTimeOffset SessionAt { get; private set; } = DateTimeOffset.MaxValue;
+        public bool GameLoaded => _combat.Loaded;
+        public JsonElement? CommunityGoals => _facts.TryGetValue("CommunityGoal", out var goals) ? goals : null;
         public string Export() => JsonSerializer.Serialize(new SnapshotState(_facts, System, _commander, _shipId, _latest, SessionAt, _combat));
         public static JournalSnapshot Restore(string json)
         {
@@ -133,7 +135,7 @@ public sealed class JournalContextSource(Func<string> directory) : IGameContextS
                 currentSystem = System, observedAt = _latest, sessionAt = SessionAt,
                 historyLimited = limited, skippedRecords = skipped, facts = _facts
             }), _latest is null ? "No readable journal events." : $"Last journal event: {_latest:O}");
-        public object CombatView(JsonElement? status, DateTimeOffset now) => _combat.View(status, now);
+        public object CombatView(JsonElement? status, DateTimeOffset now, bool? gameSessionActive = null) => _combat.View(status, now, gameSessionActive);
         public object CombatFit()
         {
             JsonElement? loadout = _facts.TryGetValue("Loadout", out var l) ? l : null;

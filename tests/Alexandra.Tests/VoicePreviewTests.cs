@@ -250,6 +250,7 @@ public sealed class VoicePreviewTests
     [InlineData(CombatCalloutKind.LowHull)]
     [InlineData(CombatCalloutKind.CriticalHull)]
     [InlineData(CombatCalloutKind.HeatDamage)]
+    [InlineData(CombatCalloutKind.Overheating)]
     public async Task CalloutsUseSelectedVoiceFixedPhraseAndNoConversationOrTools(CombatCalloutKind kind)
     {
         var wire = new Wire { ConfirmedVoice = "cedar", Transcript = CombatCalloutLines.Text(kind) };
