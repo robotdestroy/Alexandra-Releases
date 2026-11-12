@@ -23,6 +23,7 @@ $zip=[IO.Compression.ZipFile]::OpenRead($package)
 try {
     $names=@($zip.Entries | ForEach-Object FullName)
     foreach($name in $names) {
+        if($name -match '(?i)(^|/)Session Logs/|(^|/)Session-\d{4}-\d{2}-\d{2}-\d{6}-[A-F0-9]+\.md(?:\.tmp)?$') { throw 'Personal gameplay session journal found in package.' }
         if($name -match '(?i)(^|/)memory-[^/]+\.json(\.tmp)?$') { throw 'Private companion memory found in package.' }
         if($name -match '(?i)(^|/)(settings\.json|appsettings\.json|openai\.key|gateway-access\.dat|Journal\.[^/]+\.log|Status\.json|Cargo\.json|NavRoute\.json|session-[^/]+\.jsonl)$|\.(pdb|wav|pcm|pfx|p12|alexandra-access)$') {
             throw "Personal/development file found in package: $name"

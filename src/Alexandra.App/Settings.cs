@@ -20,6 +20,8 @@ public sealed class Settings
     public bool ResearchBrowserEnabled { get; set; } = true;
     public bool ThinkingSoundEnabled { get; set; } = true;
     public bool MemoryEnabled { get; set; } = true;
+    public bool SessionLogsEnabled { get; set; } = true;
+    public bool CombatCalloutsEnabled { get; set; } = true;
     public bool AutoUpdateEnabled { get; set; } = true;
     public bool OpenWithElite { get; set; }
     public bool SetupCompleted { get; set; }
@@ -34,6 +36,7 @@ public sealed class Settings
 }
 public sealed class SettingsStore
 {
+    public static string SessionLogDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Alexandra", "Session Logs");
     private readonly string _directory;
     public Settings Value { get; private set; } = new();
     public SettingsStore(string? directory = null)

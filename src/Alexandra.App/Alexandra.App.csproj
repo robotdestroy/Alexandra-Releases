@@ -5,7 +5,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <Version>0.1.24</Version>
+    <Version>0.1.25</Version>
     <StartupObject>Alexandra.App.App</StartupObject>
     <AlexandraUpdateFeedUrl Condition="'$(AlexandraUpdateFeedUrl)' == ''"></AlexandraUpdateFeedUrl>
     <ApplicationIcon>Assets\alexandra-icon.ico</ApplicationIcon>

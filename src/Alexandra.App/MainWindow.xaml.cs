@@ -42,6 +42,13 @@ public partial class MainWindow : Window
     private readonly IGameRecordSource _records;
     private (int Turn, string Scope, string Json)? _lastRecords;
     private readonly ICompanionMemory _memory;
+    private readonly ICombatContextSource _combat;
+    private readonly CombatReplyGuard _combatReplies = new();
+    private readonly CombatCalloutPolicy _calloutPolicy = new();
+    private readonly IStreamingAudioPlayer _calloutAudio = new StreamingAudioPlayer();
+    private readonly CombatCalloutPlayer _callouts;
+    private DateTimeOffset _calloutQuietUntil;
+    private int _discardingCombatTurn = -1;
     private readonly ISystemResolver _systems;
     private readonly CopiedDestinationMemory _copiedDestination = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<int, Lazy<Task<DestinationPasteResult>>> _pasteTurns = new();
@@ -78,9 +85,13 @@ public partial class MainWindow : Window
             () => new ResearchBrowser(_log), () => _settings.Value.ResearchBrowserEnabled, _log);
         _memory = new CompanionMemory(() => _settings.Value.JournalDirectory,
             System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Alexandra", "Memory"),
-            () => _settings.Value.MemoryEnabled);
+            () => _settings.Value.MemoryEnabled, sessionLogs: new MarkdownSessionLogWriter(SettingsStore.SessionLogDirectory),
+            sessionLogsEnabled: () => _settings.Value.SessionLogsEnabled);
         _game = new JournalContextSource(() => _settings.Value.JournalDirectory); // Read-only fallback if the memory file is unavailable.
         _records = new OnDemandGameRecords(() => _settings.Value.JournalDirectory);
+        _combat = new CombatContextSource(() => _settings.Value.JournalDirectory);
+        _callouts = new CombatCalloutPlayer(new RealtimeCombatCalloutSource(() => new RealtimeWebSocketTransport()), _calloutAudio);
+        _callouts.Failed += () => _log.Write("combat.callout_unavailable", "Skipped; automatic audio paused for two minutes. Conversation is unchanged.");
         _systems = new EdsmSystemResolver(_http);
         CreateVoiceSession();
         for (var i = 0; i < 43; i++)
@@ -92,6 +103,7 @@ public partial class MainWindow : Window
         }
         _audio.Level += value => _level = value;
         _speaker.Level += value => { if (_recordOwner is null) _level = value; };
+        _calloutAudio.Level += value => { if (_recordOwner is null && !_speaker.HasUnplayedAudio) _level = value; };
         _timer.Tick += Animate; _timer.Start();
         _controller.ButtonChanged += ControllerButton;
         _controller.DeviceDisconnected += (_, id) => Ui(() => {
@@ -115,6 +127,7 @@ public partial class MainWindow : Window
     {
         Loaded -= FirstLoaded;
         _ = WatchMemoryAsync(_lifetime.Token);
+        _ = WatchCombatAsync(_lifetime.Token);
         var needsSetup = !_settings.Value.SetupCompleted && !_settings.Value.AllowCloud;
         try { needsSetup |= string.IsNullOrWhiteSpace(_settings.ReadKey()); }
         catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException) { needsSetup = true; }
@@ -163,6 +176,60 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException) { }
     }
+    private async Task WatchCombatAsync(CancellationToken token)
+    {
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    deadline.CancelAfter(TimeSpan.FromSeconds(4));
+                    await Task.Run(() => _combat.ReadAsync(deadline.Token), deadline.Token);
+                }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or JsonException)
+                { /* Optional telemetry must never interrupt the normal voice connection. */ }
+                Ui(() => {
+                    if (_speaker.HasUnplayedAudio && !_setupOpen && _recordOwner is null &&
+                        !_combatReplies.CanPlay(_voice.CurrentTurn, _combat.Latest, DateTimeOffset.UtcNow))
+                        DiscardStaleCombatReply(_voice, _voice.CurrentTurn);
+                    CheckCombatCallout();
+                });
+                await Task.Delay(750, token);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+    private bool QuietForCallout() => !_closed && !_setupOpen && _recordOwner is null && !_busy &&
+        !_speaker.HasUnplayedAudio && DateTimeOffset.UtcNow >= _calloutQuietUntil;
+    private void CheckCombatCallout()
+    {
+        var allowed = _settings.Value.CombatCalloutsEnabled && _settings.Value.AllowCloud;
+        var callout = _calloutPolicy.Observe(_combat.Latest, DateTimeOffset.UtcNow, allowed,
+            QuietForCallout() && !_callouts.IsActive);
+        if (!allowed) { _callouts.Cancel(); return; }
+        if (callout is null) return;
+        try
+        {
+            var voice = _settings.Value.Voice;
+            _ = _callouts.TryPlayAsync(callout, voice, _settings.ReadKey(), allowed, () =>
+                QuietForCallout() && _settings.Value.CombatCalloutsEnabled && _settings.Value.AllowCloud &&
+                _settings.Value.Voice == voice && CombatCalloutPolicy.IsRelevant(callout, _combat.Latest, DateTimeOffset.UtcNow));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException)
+        { _callouts.Cancel(); } // No fallback voice or error announcement for an optional callout.
+    }
+    private void DiscardStaleCombatReply(IVoiceSession session, int turn)
+    {
+        if (session != _voice || turn != session.CurrentTurn || _discardingCombatTurn == turn) return;
+        _discardingCombatTurn = turn;
+        _log.Write("combat.reply_discarded", "Cockpit evidence changed or aged before playback completed.", turn);
+        _ = StopConversationTurnAsync(); // Stops queued audio and invalidates the turn synchronously before awaiting.
+        StatusText.Text = "Combat changed · ask again";
+        SetVoiceNotice(StatusText.Text); // Also visible in minimal mode, without an unsolicited voice or sound.
+    }
     private void UpdatesClick(object sender, RoutedEventArgs e)
     {
         if (_updatesWindow is not null) { _updatesWindow.Activate(); return; }
@@ -184,6 +251,8 @@ public partial class MainWindow : Window
     }
     private void CreateVoiceSession()
     {
+        _callouts.Cancel(); _calloutPolicy.Reset(); // Fixed clips are keyed by voice and contain no conversation or personal data.
+        _combatReplies.Clear(); _discardingCombatTurn = -1;
         _savedScreenshots.Clear();
         _pasteTurns.Clear(); // Turn numbers restart when settings replace the voice session.
         var session = new RealtimeVoiceSession(() => new RealtimeWebSocketTransport(),
@@ -191,6 +260,10 @@ public partial class MainWindow : Window
         _voice = session;
         session.AudioReceived += frame => Ui(() => {
             if (session != _voice || frame.Turn != session.CurrentTurn || _recordOwner is not null || _setupOpen) return;
+            _callouts.Cancel();
+            _calloutQuietUntil = DateTimeOffset.UtcNow.AddSeconds(3);
+            if (!_combatReplies.CanPlay(frame.Turn, _combat.Latest, DateTimeOffset.UtcNow))
+            { DiscardStaleCombatReply(session, frame.Turn); return; }
             _thinkingCue.Reset(); // Silence the cue before queuing any reply, not after the next UI tick.
             try { _speaker.Append(frame.ItemId, frame.Pcm); }
             catch (Exception ex) { ShowError(ex); _ = StopConversationTurnAsync(); }
@@ -198,6 +271,7 @@ public partial class MainWindow : Window
         session.StatusChanged += status => Ui(() => {
             if (session != _voice || status.Turn != session.CurrentTurn || _recordOwner is not null || _setupOpen) return;
             _busy = status.Busy;
+            if (_busy) _callouts.Cancel();
             var speaking = _speaker.HasUnplayedAudio;
             UpdateThinkingSound(speaking);
             StatusText.Text = speaking ? "Speaking" : status.Text;
@@ -263,6 +337,9 @@ public partial class MainWindow : Window
             if (!_settings.Value.AllowCloud) { StatusText.Text = "Open Setup to allow cloud voice"; return; }
             if (string.IsNullOrWhiteSpace(_settings.ReadKey())) throw new InvalidOperationException("Add an API key in Setup before talking.");
             _uiTurn++; _busy = false;
+            _callouts.Cancel();
+            _calloutQuietUntil = DateTimeOffset.UtcNow.AddSeconds(3);
+            _combatReplies.Clear();
             SetVoiceNotice(null);
             StopFailureSound();
             _thinkingCue.Reset(); // Must stop before opening the microphone.
@@ -284,6 +361,7 @@ public partial class MainWindow : Window
         try
         {
             if (owner is null || _recordOwner != owner) return;
+            _calloutQuietUntil = DateTimeOffset.UtcNow.AddSeconds(3);
             _recordOwner = null;
             var uiTurn = _uiTurn;
             var duration = DateTimeOffset.UtcNow - _recordStarted;
@@ -319,6 +397,24 @@ public partial class MainWindow : Window
     private async Task<string> RunToolAsync(VoiceToolCall call, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        if (call.Name == "get_combat_context")
+        {
+            var voice = _voice;
+            var kind = call.Combat ?? throw new InvalidOperationException("Choose live or review combat context.");
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(4));
+            CombatContext combatContext;
+            try { combatContext = await Task.Run(() => _combat.ReadAsync(deadline.Token), deadline.Token); }
+            catch (OperationCanceledException) when (!token.IsCancellationRequested)
+            { throw new InvalidOperationException("Combat data is still catching up. Don't reuse older cockpit readings."); }
+            await Dispatcher.InvokeAsync(() => {
+                token.ThrowIfCancellationRequested();
+                if (_closed || voice != _voice || call.Turn != voice.CurrentTurn) throw new OperationCanceledException();
+                _combatReplies.Arm(call.Turn, combatContext, kind);
+            });
+            _log.Write("combat.context", kind + "; fresh cockpit=" + combatContext.LiveAvailable, call.Turn);
+            return CombatContextSource.ToolResult(combatContext, kind);
+        }
         if (call.Name == "paste_destination")
         {
             var voice = _voice;
@@ -453,6 +549,9 @@ public partial class MainWindow : Window
     }
     private async Task StopConversationTurnAsync()
     {
+        _callouts.Cancel();
+        _calloutQuietUntil = DateTimeOffset.UtcNow.AddSeconds(3);
+        _combatReplies.Clear();
         _uiTurn++; _busy = false;
         SetVoiceNotice(null);
         StopFailureSound();
@@ -493,7 +592,7 @@ public partial class MainWindow : Window
     private void Animate(object? sender, EventArgs e)
     {
         _phase += .12;
-        var speaking = _speaker.HasUnplayedAudio;
+        var speaking = _speaker.HasUnplayedAudio || _calloutAudio.HasUnplayedAudio;
         UpdateThinkingSound(speaking);
         var active = _recordOwner is not null || speaking;
         for (var i = 0; i < _bars.Count; i++)
@@ -625,7 +724,7 @@ public partial class MainWindow : Window
         try
         {
             await StopConversationTurnAsync(); await EndRecordingAsync(_recordOwner, true);
-            _setup = new SetupWindow(_settings, _log, mode: mode) { Owner = this };
+            _setup = new SetupWindow(_settings, _log, mode: mode, sessionLogError: () => _memory.SessionLogError) { Owner = this };
             if (_setup.ShowDialog() == true)
             {
                 ApplyAppearance();
@@ -692,6 +791,7 @@ public partial class MainWindow : Window
     {
         _closed = true; _uiTurn++; _timer.Stop(); _windowSource?.RemoveHook(WindowMessage);
         _lifetime.Cancel();
+        _callouts.Dispose();
         _thinkingCue.Dispose();
         try { _failureSound.Dispose(); } catch (Exception) { }
         _log.Write("app.stop", "Conversation closed");

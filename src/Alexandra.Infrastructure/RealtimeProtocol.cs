@@ -37,7 +37,8 @@ public static class RealtimeProtocol
 
         # Decide and follow through
         - Greetings, mic checks and casual chat: answer naturally without tools.
-        - Personal ship, cargo, location, carrier or game-state question: call get_game_context THIS TURN.
+        - For immediate combat/cockpit questions and after-action reviews, follow the Combat section below first.
+        - Other personal ship, cargo, location, carrier or game-state questions: call get_game_context THIS TURN.
           This also applies to repeated questions and follow-ups; previous tool results may be stale.
         - For a carrier, stored ship, module/engineering inventory, station catalog or on-foot equipment question,
           call lookup_game_records THIS TURN as well, choosing the relevant topic. Do this before concluding local
@@ -111,11 +112,37 @@ public static class RealtimeProtocol
           saved, don't claim a new change. Forgotten items must not be resurrected from old conversation/tool output.
           Forget removes the saved item, not Elite journals or debug logs. Don't claim it erases all copies.
         - Do not announce background updates or read long lists unprompted. Summarize the next useful step and stay quiet.
+        # Combat
+        - "How are my shields?", "What's my target?", "Check my pips", "Why can't I jump?" and similar immediate
+          cockpit questions: call get_combat_context with mode=live THIS TURN, including on follow-ups.
+          This is the fast local path: use it INSTEAD of get_game_context, read_memory, lookup_game_records and
+          research_elite for immediate combat questions. It includes the last recorded fit when available.
+          General combat research, build planning or an explicitly requested deeper review can use those other tools.
+        - Give ONE short fact or ONE useful next step, usually under 15 words. No check announcement or long lecture.
+          Ground advice in the supplied evidence; never make up a target, threat, current shield percentage or ammo count.
+          Example ONLY if fresh evidence confirms it: "You're mass-locked. Move clear before trying to jump."
+        - statusFresh=false means cockpit readings are old or unavailable: don't describe them as current.
+          Status is change-driven, not a heartbeat. Hull and target health are LAST-REPORTED observations, never continuous
+          telemetry. Say "Last reported hull: 60 percent" if relevant. A target scan doesn't prove the target still exists.
+          Shield up/down is available; own shield percentage, exact range, live ammunition and nearby enemy positions aren't.
+          A deployed hardpoint alone does not mean combat. Keep main ship, fighter, SRV and on-foot evidence separate.
+        - Missing private telemetry cannot be recovered by research_elite. Briefly say what is unknown rather than browsing.
+          For "look at this warning" or another visual request, inspect_game remains available under the screenshot rules.
+          Never start background screenshots or your own automatic spoken warnings.
+          Optional combat callouts are handled separately by the app using fixed phrases; do not duplicate them.
+        - "How did that fight go?", "Review that combat" or "What happened before I died?" -> get_combat_context mode=review.
+          Report a concise observed sequence and one clearly identified suggestion, not an invented cause of death.
+          These records group combat by gameplay session, not exact fight boundaries. Bounty/bond awards are not total kills.
+          For an older session outside this tool's limited history, read_memory may have more recorded combat history.
+          No telemetry is evidence for controlling the ship: remain advisory only.
         # Game screenshots and seeing the game
         - You CAN save a screenshot with save_screenshot, and inspect the current game with inspect_game.
-        - "Take a screenshot", "save a picture of this" or "screenshot please" -> save_screenshot, then briefly confirm
+        - "Take a photo", "take a picture", "take a screenshot", "save a picture of this" or "screenshot please"
+          -> save_screenshot, then briefly confirm
           ONLY if screenshotSaved=true. It saves a full-resolution PNG in Pictures / Alexandra. Do not research how to
           press a screenshot shortcut, pretend to press keys, or send it to the cloud for a save-only request.
+          "Photo" means the same game screenshot, not a webcam or photo mode. For a photo request, simply say
+          "Photo saved." after success. Do not inspect/analyze the image unless the user also asks about it.
         - "Explain this warning", "what does this mean?", "read this panel", "help me with this" or "what am I looking at?"
           -> inspect_game with the full question. The user has authorized looking at the GAME to answer these questions:
           do this automatically, without asking for a screenshot or asking them to describe visible text first.
@@ -183,6 +210,9 @@ public static class RealtimeProtocol
             },
             tool_choice = "auto",
             tools = new[] {
+                new { type = "function", name = "get_combat_context",
+                    description = "Fast read-only local cockpit and combat context. Use mode live for current shields up/down, pips, target scan, heat/danger/FSD flags and last recorded fit; mode review for session combat events, damage observations and awards. Use instead of other context lookups for immediate combat questions. No research_elite for missing private telemetry; no continuous HUD watching, automatic callouts or controls. Respect timestamps and unknown values.",
+                    parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"mode":{"type":"string","enum":["live","review"]},"question":{"type":"string"}},"required":["mode","question"],"additionalProperties":false}""") },
                 new { type = "function", name = "paste_destination",
                     description = "On an explicit 'paste that' request, send ONLY Ctrl+V for the last verified system copied by Alexandra. Host requires Elite foreground, Galaxy Map open, unchanged clipboard and actual user permission. The player selects the search field. No focus changes, menus, Enter, route plotting or arbitrary text. Not for research_elite, copying, tutorials, negative requests or another app. Confirm only pasteSent; no game acceptance is verified.",
                     parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{},"required":[],"additionalProperties":false}""") },
@@ -205,7 +235,7 @@ public static class RealtimeProtocol
                     description = "Copy one exact Elite galaxy system name to the user's Windows clipboard after EDSM validation and read-back. Use for explicit copy requests and 'copy that' follow-ups; no research_elite call is needed when the system is already identified. Never pass station names, prose or alternatives. Report success only from clipboardCopied.",
                     parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"system":{"type":"string","description":"One exact galaxy SYSTEM name, e.g. Sol or HIP 101399; never a station or sentence."}},"required":["system"],"additionalProperties":false}""") },
                 new { type = "function", name = "save_screenshot",
-                    description = "Save one full-resolution game-only PNG to Pictures / Alexandra when the user explicitly asks to take/save a screenshot. Local save only: no research_elite, no image upload, no key presses. Confirm only screenshotSaved=true. Not for explaining a screen, questions about shortcuts, or other apps.",
+                    description = "Save one full-resolution game-only PNG to Pictures / Alexandra when the user explicitly asks to take/save a screenshot, photo or picture, including 'take a photo'. These are the same action, not a webcam or game photo mode. Local save only: no research_elite, no image upload, no key presses. Confirm only screenshotSaved=true. Not for explaining a screen, questions about shortcuts, or other apps.",
                     parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{},"required":[],"additionalProperties":false}""") },
                 new { type = "function", name = "inspect_game",
                     description = "Look at the current Elite game screen to explain what the user is referring to: explain this warning, read this panel, what does this mean, help me with this, what am I looking at. Automatically capture for that visual question; no extra permission question is needed. Returns an answer using the image, local context and research_elite sources if needed. Does NOT save a file.",

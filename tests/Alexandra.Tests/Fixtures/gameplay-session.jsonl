@@ -1,0 +1,13 @@
+{"timestamp":"2026-11-11T10:01:00Z","event":"LoadGame","Commander":"Synthetic Log Pilot","FID":"SYNTHETIC-LOG-A","Ship":"mandalay","ShipID":1}
+{"timestamp":"2026-11-11T10:01:01Z","event":"Location","StarSystem":"Sol","StationName":"Example Port","Docked":true}
+{"timestamp":"2026-11-11T10:02:00Z","event":"MissionAccepted","MissionID":123,"LocalisedName":"Deliver supplies","DestinationSystem":"Alpha Centauri","Count":20}
+{"timestamp":"2026-11-11T10:03:00Z","event":"MarketBuy","Type":"gold","Type_Localised":"Gold","Count":20,"TotalCost":100000}
+{"timestamp":"2026-11-11T10:04:00Z","event":"Undocked"}
+{"timestamp":"2026-11-11T10:05:00Z","event":"FSDJump","StarSystem":"Alpha Centauri"}
+{"timestamp":"2026-11-11T10:06:00Z","event":"Docked","StationName":"Synthetic Depot","StarSystem":"Alpha Centauri"}
+{"timestamp":"2026-11-11T10:07:00Z","event":"MarketSell","Type":"gold","Type_Localised":"Gold","Count":20,"TotalSale":150000}
+{"timestamp":"2026-11-11T10:08:00Z","event":"CargoDepot","MissionID":123,"ItemsDelivered":12,"TotalItemsToDeliver":20}
+{"timestamp":"2026-11-11T10:09:00Z","event":"MaterialCollected","Name":"iron","Name_Localised":"Iron","Count":3,"Category":"Raw"}
+{"timestamp":"2026-11-11T10:10:00Z","event":"EngineerCraft","BlueprintName":"FSD_LongRange","Level":3}
+{"timestamp":"2026-11-11T10:11:00Z","event":"ColonisationContribution","MarketID":1234,"Contributions":[{"Name":"$steel_name;","Name_Localised":"Steel","Amount":10}]}
+{"timestamp":"2026-11-11T10:12:00Z","event":"MissionCompleted","MissionID":123}

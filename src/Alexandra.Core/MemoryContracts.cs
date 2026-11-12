@@ -8,6 +8,7 @@ public sealed record MemoryItem(string Id, string Kind, string Text, string Stat
 public sealed record MemoryResult(bool Changed, string Message, MemoryItem? Item = null);
 public interface ICompanionMemory : IGameContextSource
 {
+    string? SessionLogError => null;
     Task SynchronizeAsync(CancellationToken token);
     Task<GameContext> RecallAsync(string query, CancellationToken token);
     Task<MemoryResult> EditAsync(MemoryEdit edit, string userTranscript, CancellationToken token, string? expectedScope = null);

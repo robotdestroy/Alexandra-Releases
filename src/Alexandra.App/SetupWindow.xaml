@@ -48,7 +48,7 @@
         <TextBlock Text="Use a key from the OpenAI project paying for your usage. Leave blank to keep a saved key. Stored encrypted for this Windows user and preserved across updates. No key is included in the installer. ChatGPT subscriptions do not cover API costs."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
         <TextBlock x:Name="OnboardingCloudNotice" Visibility="Collapsed"
-                   Text="Save and start enables cloud voice and research. Your voice, relevant game data, and game images for visual questions go to OpenAI. Research uses public web sources. Replies use an AI-generated voice. Optional local debug logging is off by default."
+                   Text="Save and start enables cloud voice and research. Your voice, relevant game data, and game images for visual questions go to OpenAI. Research uses public web sources. Replies use an AI-generated voice. Local gameplay journals and brief combat callouts are on; turn them off in Setup. Callout clips use API credit and are cached in memory. Optional conversation debug logging is off by default."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,8"/>
         </StackPanel>
         <StackPanel x:Name="AdditionalSettingsSection">
@@ -61,6 +61,9 @@
         <TextBlock Text="Selecting a voice plays a short sample. Uses API credit the first time; samples are reused while Setup is open. Save applies your choice."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
         <TextBlock x:Name="VoicePreviewStatus" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,18"/>
+        <CheckBox x:Name="CombatCalloutsBox" Content="Combat callouts" Margin="0,0,0,6"/>
+        <TextBlock Text="Brief shield-loss, low-hull and heat-damage warnings during combat in your main ship. No old warnings on startup, no talking over you or an answer, and no ship controls. Uses your selected voice. The first clip of each type uses API credit; clips are reused in memory for this launch. Slow or outdated warnings are skipped. Requires cloud voice. Turn off and Save for a quiet companion."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
         <CheckBox x:Name="ConsentBox" Margin="0,0,0,12" Foreground="{StaticResource TextPrimaryBrush}">
             <TextBlock TextWrapping="Wrap" Width="420"
                 Text="Allow cloud voice and research. My microphone recording, relevant local game data, and game images used to answer my visual questions may be sent to OpenAI. Research queries go to web sources; recommended system names are checked with EDSM."/>
@@ -73,6 +76,12 @@
         <CheckBox x:Name="MemoryBox" Content="Remember my commander, goals and notes" Margin="0,0,0,6"/>
         <TextBlock Text="Keeps local game history, your requested goals/notes and dated research summaries across launches. Catches up from Elite journals, without recording background audio or screenshots. Relevant memories may be sent with your cloud questions. Stored as readable local data, separately per commander. Turning this off pauses memory; it does not delete saved items. Ask Alexandra to forget a specific saved item."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,18"/>
+        <CheckBox x:Name="SessionLogsBox" Content="Write a gameplay session journal" Margin="0,0,0,6"/>
+        <TextBlock Text="Local Markdown recaps, goals, mission progress, travel, trade and materials. Updated as you play; catches up after a restart. No extra AI charges or conversation recordings. Starts with new activity after enabling. Turning this off keeps existing files. Logs are readable personal gameplay history; review before sharing."
+                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+        <TextBlock x:Name="SessionLogPath" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+        <TextBlock x:Name="SessionLogStatus" FontSize="12" Foreground="{StaticResource AccentHoverBrush}" TextWrapping="Wrap"/>
+        <Button Content="Open session logs" Click="OpenSessionLogs" HorizontalAlignment="Left" Margin="0,8,0,18"/>
         <CheckBox x:Name="LoggingBox" Content="Save local conversation debug logs" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6"/>
         <TextBlock Text="Saves what you said, generated replies, lookups, sources, and errors as local text for up to 7 days / 10 MB. No audio, screenshots, raw journals, or API keys. Logs can contain personal conversation details. They are not automatically uploaded."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>

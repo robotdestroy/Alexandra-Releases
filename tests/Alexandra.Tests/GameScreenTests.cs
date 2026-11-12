@@ -8,6 +8,18 @@ public sealed class GameScreenTests
 {
     [Theory]
     [InlineData("Take a screenshot", true)]
+    [InlineData("Take a photo", true)]
+    [InlineData("Alexandra, could you take a photo please?", true)]
+    [InlineData("Take a photo of this", true)]
+    [InlineData("Snap a photo", true)]
+    [InlineData("Take a picture", true)]
+    [InlineData("Don't take a photo", false)]
+    [InlineData("Do not take a photo", false)]
+    [InlineData("How do I take a photo?", false)]
+    [InlineData("Which key do I use to take a photo?", false)]
+    [InlineData("Did you take a photo?", false)]
+    [InlineData("Take a photo of my desktop", false)]
+    [InlineData("Take a photo of the browser", false)]
     [InlineData("Could you take a screenshot of my current situation?", true)]
     [InlineData("Save a picture of this", true)]
     [InlineData("Screenshot please", true)]
@@ -35,6 +47,10 @@ public sealed class GameScreenTests
     [InlineData("Explain this warning but don't save a screenshot", true)]
     [InlineData("Can you look at the game and explain what I'm seeing?", true)]
     [InlineData("Explain this without a screenshot", false)]
+    [InlineData("Explain this without taking a photo", false)]
+    [InlineData("Explain this without a photo", false)]
+    [InlineData("Take a photo", false)]
+    [InlineData("Take a photo and explain this warning", true)]
     [InlineData("Don't screenshot this", false)]
     [InlineData("Where can I buy gold?", false)]
     [InlineData("What is engineering?", false)]
@@ -54,6 +70,27 @@ public sealed class GameScreenTests
         var saved = await screens.SaveAsync("Take a screenshot", default);
         Assert.Equal("test.png", saved.FileName);
         Assert.Equal(1, capture.JpegCalls); Assert.Equal(1, capture.PngCalls); Assert.Equal(1, store.Calls);
+    }
+    [Theory]
+    [InlineData("Take a photo")]
+    [InlineData("Take a picture")]
+    [InlineData("Could you take a photo of this?")]
+    public async Task PhotoAliasSavesTheSameGamePngWithoutAnalysis(string words)
+    {
+        var capture = new Capture(); var store = new Store();
+        var saved = await new GameScreenActions(capture, store).SaveAsync(words, default);
+        Assert.Equal("test.png", saved.FileName);
+        Assert.Equal(1, capture.PngCalls); Assert.Equal(1, store.Calls); Assert.Equal(0, capture.JpegCalls);
+    }
+    [Fact]
+    public void VoiceInstructionsExplicitlyMapPhotosToTheExistingScreenshotTool()
+    {
+        Assert.Contains("\"Take a photo\"", RealtimeProtocol.Instructions);
+        Assert.Contains("\"Photo saved.\" after success", RealtimeProtocol.Instructions);
+        using var doc = System.Text.Json.JsonDocument.Parse(System.Text.Json.JsonSerializer.Serialize(RealtimeProtocol.SessionUpdate("marin")));
+        var tool = doc.RootElement.GetProperty("session").GetProperty("tools").EnumerateArray()
+            .Single(t => t.GetProperty("name").GetString() == "save_screenshot");
+        Assert.Contains("'take a photo'", tool.GetProperty("description").GetString());
     }
 
     [Fact]

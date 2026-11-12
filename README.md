@@ -15,9 +15,12 @@ A voice-first companion for Elite Dangerous on Windows. Stay in the game: hold a
 - Natural voice conversations and follow-up questions; press push-to-talk again to interrupt.
 - Local game context: ship, modules, cargo, route, missions, engineering materials and recorded construction needs.
 - On-demand carrier, stored-ship, module and station records.
+- Short combat answers using local cockpit flags, pips, target scans and dated hull reports; session journals include combat after-action summaries. [Capabilities and limits](docs/COMBAT.md).
+- Optional brief combat callouts for shield loss, low hull and heat damage. On by default; disable in Setup. Selected-voice clips use API credit to generate and are reused in memory.
 - Public research using web search and an isolated browser, including Inara and community sources.
 - Persistent local commander memory for goals, notes, preferences and progress, with journal catch-up after time away.
-- Inspect the visible game for visual questions; save a screenshot only when explicitly requested.
+- Local Markdown session journals: readable recaps, goal and mission changes, travel, trade, materials and next-session reminders. Open the folder from Setup.
+- Inspect the visible game for visual questions; “take a photo” or “take a screenshot” saves a game image locally in Pictures / Alexandra.
 - Copy a validated system name. An explicitly requested paste sends only Ctrl+V with Elite's Galaxy Map ready; the player submits the search and plots the route.
 - Minimal waveform overlay, configurable voice input, window positioning and optional automatic opening with Elite.
 
@@ -27,6 +30,7 @@ A voice-first companion for Elite Dangerous on Windows. Stay in the game: hold a
 - Keys are stored separately from settings, encrypted for the Windows user. The key's account pays for API usage.
 - Voice, relevant game context, selected memories and requested game images can be sent to OpenAI after the user enables cloud operation in setup.
 - Conversation debug logging is optional and off by default. Logs stay local and may contain conversation details.
+- Gameplay session journals are on by default, separate from debug logs. They contain personal game history and explicitly saved goals, not full conversations. They stay in `%LOCALAPPDATA%/Alexandra/Session Logs`; switch off in Setup. No extra API use. See [session journals](docs/SESSION-JOURNALS.md).
 - Research uses an isolated browser, not the user's logged-in browsing profile. Private Inara account access is not implemented.
 - No flight automation. Missing or stale information is not proof of current game state.
 - See [source publication notes](docs/PUBLIC-SOURCE.md) for audit scope, bundled assets and licensing status.

@@ -23,7 +23,7 @@ internal static class OnboardingProbe
         Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         SetupWindow Create(SetupMode mode)
         {
-            var window = new SetupWindow(store, log, source, new SilentPlayer(), autoStart, mode)
+            var window = new SetupWindow(store, log, source, new SilentPlayer(), autoStart, mode, sessionLogError: () => "Synthetic session save warning")
             { Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
             windows.Add(window);
             return window;
@@ -32,8 +32,8 @@ internal static class OnboardingProbe
         {
             var defaults = store.Value;
             check(defaults.MinimalMode && defaults.KeepOnTop && defaults.ThinkingSoundEnabled &&
-                defaults.ResearchBrowserEnabled && defaults.MemoryEnabled && defaults.Voice == "marin" &&
-                !defaults.DiagnosticLoggingEnabled && !defaults.AllowCloud,
+                defaults.ResearchBrowserEnabled && defaults.MemoryEnabled && defaults.SessionLogsEnabled && defaults.Voice == "marin" &&
+                defaults.CombatCalloutsEnabled && !defaults.DiagnosticLoggingEnabled && !defaults.AllowCloud,
                 "new defaults match onboarding without enabling cloud before Save and start");
             var firstRun = Create(SetupMode.FirstRun);
             check(((TextBlock)firstRun.FindName("SetupHeading")).Text == "WELCOME" &&
@@ -86,6 +86,8 @@ internal static class OnboardingProbe
             // Hidden controls must not accidentally overwrite defaults on a first-run save.
             ((CheckBox)firstRun.FindName("LoggingBox")).IsChecked = true;
             ((CheckBox)firstRun.FindName("MemoryBox")).IsChecked = false;
+            ((CheckBox)firstRun.FindName("SessionLogsBox")).IsChecked = false;
+            ((CheckBox)firstRun.FindName("CombatCalloutsBox")).IsChecked = false;
             ((CheckBox)firstRun.FindName("BrowserBox")).IsChecked = false;
             ((CheckBox)firstRun.FindName("OpenWithEliteBox")).IsChecked = true;
             firstRun.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
@@ -99,7 +101,7 @@ internal static class OnboardingProbe
                 restored.Value.ControllerId == "synthetic-controller" && restored.Value.ControllerButton == 8,
                 "Save and start stores the chosen inputs/key and explicitly enables cloud voice");
             check(restored.Value.MinimalMode && restored.Value.KeepOnTop && restored.Value.ThinkingSoundEnabled &&
-                restored.Value.ResearchBrowserEnabled && restored.Value.MemoryEnabled &&
+                restored.Value.ResearchBrowserEnabled && restored.Value.MemoryEnabled && restored.Value.SessionLogsEnabled && restored.Value.CombatCalloutsEnabled &&
                 restored.Value.Voice == "marin" && !restored.Value.DiagnosticLoggingEnabled &&
                 !restored.Value.OpenWithElite && autoStart.Calls == 0 && source.Calls == 0,
                 "onboarding preserves hidden defaults without samples or startup changes");
@@ -118,6 +120,16 @@ internal static class OnboardingProbe
                 !restored.Value.MemoryEnabled && restored.Value.DiagnosticLoggingEnabled,
                 "first-run key recovery does not reset existing preferences");
             var settings = Create(SetupMode.Settings);
+            check(((CheckBox)settings.FindName("SessionLogsBox")).IsChecked == true &&
+                ((TextBlock)settings.FindName("SessionLogPath")).Text.EndsWith(Path.Combine("Alexandra", "Session Logs")) &&
+                ((TextBlock)settings.FindName("SessionLogStatus")).Text == "Synthetic session save warning",
+                "Setup exposes enabled local session journals, their folder and storage failures");
+            ((CheckBox)settings.FindName("SessionLogsBox")).IsChecked = false;
+            check(((CheckBox)settings.FindName("CombatCalloutsBox")).IsChecked == true,
+                "Setup exposes enabled optional combat callouts");
+            ((CheckBox)settings.FindName("CombatCalloutsBox")).IsChecked = false;
+            check(new SettingsStore(directory).Value.CombatCalloutsEnabled, "combat-callout preference waits for Save");
+            check(new SettingsStore(directory).Value.SessionLogsEnabled, "session-journal preference waits for Save");
             check(((FrameworkElement)settings.FindName("WelcomePanel")).Visibility == Visibility.Collapsed &&
                 ((FrameworkElement)settings.FindName("StartupSection")).Visibility == Visibility.Visible &&
                 ((FrameworkElement)settings.FindName("AdditionalSettingsSection")).Visibility == Visibility.Visible &&
@@ -127,6 +139,8 @@ internal static class OnboardingProbe
             ((TextBox)settings.FindName("ModelBox")).Text = "synthetic-model";
             SaveDialog(settings, check);
             restored = new SettingsStore(directory);
+            check(!restored.Value.SessionLogsEnabled, "session-journal opt-out persists after Save");
+            check(!restored.Value.CombatCalloutsEnabled, "combat-callout opt-out persists after Save and restart");
             check(!restored.Value.MinimalMode && !restored.Value.KeepOnTop && !restored.Value.ThinkingSoundEnabled &&
                 restored.Value.Model == "synthetic-model" && autoStart.Calls == 1,
                 "regular Setup saves without resetting menu-only preferences");

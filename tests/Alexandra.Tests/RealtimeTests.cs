@@ -32,7 +32,7 @@ public sealed partial class RealtimeTests
         Assert.Equal("auto", session.GetProperty("tool_choice").GetString());
         Assert.Equal("marin", session.GetProperty("audio").GetProperty("output").GetProperty("voice").GetString());
         Assert.Contains("NOT a command interface", session.GetProperty("instructions").GetString());
-        Assert.Equal(9, session.GetProperty("tools").GetArrayLength());
+        Assert.Equal(10, session.GetProperty("tools").GetArrayLength());
     }
     [Fact]
     public void VoicePolicyRequiresBriefAnswersFreshContextAndAutomaticPublicFallback()
@@ -452,6 +452,7 @@ public sealed partial class RealtimeTests
     }
     [Theory]
     [InlineData("save_screenshot", "{}", "Take a screenshot")]
+    [InlineData("save_screenshot", "{}", "Take a photo")]
     [InlineData("inspect_game", "{\"question\":\"Explain this warning\"}", "Explain this warning")]
     public async Task ScreenToolsReachTheirDedicatedHostAction(string name, string arguments, string user)
     {

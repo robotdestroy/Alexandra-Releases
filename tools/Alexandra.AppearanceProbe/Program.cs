@@ -80,6 +80,7 @@ internal static class Program
             var settings = new SettingsStore(directory);
             Check(settings.Value.MinimalMode && settings.Value.KeepOnTop, "new profiles default to minimal mode and keep-on-top");
             Check(settings.Value.ThinkingSoundEnabled, "thinking sound defaults on for new profiles");
+            Check(settings.Value.SessionLogsEnabled, "gameplay session journals default on independently of debug logs and cloud");
             Check(settings.Value.AutoUpdateEnabled && !settings.Value.AllowCloud, "automatic updates default on without enabling cloud voice consent");
             Check(!Directory.Exists(directory), "loading defaults does not write settings");
             Check(settings.Value.WindowScale == 1, "new and older profiles default to 100% size");
@@ -110,6 +111,7 @@ internal static class Program
             var fixture = Path.Combine(directory, "settings.json");
             File.WriteAllText(fixture, """{"Voice":"marin","KeyboardKey":120}""");
             var noAppearancePreference = new SettingsStore(directory).Value;
+            Check(noAppearancePreference.SessionLogsEnabled, "existing profiles without a session-journal preference default on");
             Check(noAppearancePreference.ThinkingSoundEnabled, "existing profiles without a thinking-sound preference default on");
             Check(noAppearancePreference.MinimalMode && noAppearancePreference.Voice == "marin" && noAppearancePreference.KeyboardKey == 120,
                 "profiles without an appearance preference use minimal mode without disturbing other settings");

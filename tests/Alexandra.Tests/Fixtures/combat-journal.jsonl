@@ -1,0 +1,11 @@
+{"timestamp":"2026-11-11T10:00:00Z","event":"LoadGame","Commander":"Synthetic Combat Pilot","FID":"SYNTHETIC-COMBAT-A","Ship":"anaconda","ShipID":1}
+{"timestamp":"2026-11-11T10:00:01Z","event":"Loadout","Ship":"anaconda","ShipID":1,"HullHealth":1.0,"Modules":[{"Slot":"HugeHardpoint1","Item":"hpt_multicannon_gimbal_huge","On":true,"Priority":1,"Engineering":{"BlueprintName":"Weapon_Overcharged","Level":5,"ExperimentalEffect":"special_autoloader"}}]}
+{"timestamp":"2026-11-11T10:00:02Z","event":"Location","StarSystem":"Test Combat System"}
+{"timestamp":"2026-11-11T10:00:03Z","event":"ShipTargeted","TargetLocked":true,"Ship":"python","PilotName":"Synthetic Enemy Never Export","PilotRank":"Dangerous","ScanStage":3,"ShieldHealth":70,"HullHealth":90,"LegalStatus":"Wanted","SubSystem":"Power Plant","SubSystemHealth":80}
+{"timestamp":"2026-11-11T10:00:04Z","event":"UnderAttack","Target":"You"}
+{"timestamp":"2026-11-11T10:00:05Z","event":"ShieldState","ShieldsUp":false}
+{"timestamp":"2026-11-11T10:00:06Z","event":"HullDamage","Health":0.6,"PlayerPilot":true,"Fighter":false}
+{"timestamp":"2026-11-11T10:00:07Z","event":"HeatDamage"}
+{"timestamp":"2026-11-11T10:00:08Z","event":"Bounty","Target":"python","TotalReward":250000,"VictimFaction":"Synthetic Faction"}
+{"timestamp":"2026-11-11T10:00:09Z","event":"FactionKillBond","Reward":75000}
+{"timestamp":"2026-11-11T10:00:10Z","event":"HullDamage","Health":0.2,"PlayerPilot":false,"Fighter":true}

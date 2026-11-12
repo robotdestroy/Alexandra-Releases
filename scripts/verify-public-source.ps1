@@ -6,6 +6,9 @@ $files = @(git -C $root ls-files)
 if ($LASTEXITCODE -ne 0 -or $files.Count -lt 10) { throw 'Stage the reviewed source files before running this check.' }
 $problems = [Collections.Generic.List[string]]::new()
 foreach ($relative in $files) {
+    if ($relative -match '(?i)(^|/)Session Logs/|(^|/)Session-\d{4}-\d{2}-\d{2}-\d{6}-[A-F0-9]+\.md(?:\.tmp)?$') {
+        $problems.Add("Personal session journal in public source: $relative")
+    }
     if ($relative -match '(?i)(^|/)(bin|obj|outputs|tmp|logs|captures|screenshots|browser-profile)/|(^|/)(settings\.json|appsettings\.json|openai\.key|Journal\.[^/]+\.log|Status\.json|Cargo\.json|NavRoute\.json|memory-[^/]+\.json(?:\.tmp)?|session-[^/]+\.jsonl|\.env(?:\..*)?)$|\.(pdb|wav|pcm|mp3|mp4|ogg|webm|pfx|p12|pem|key|alexandra-access|dmp|nupkg|exe|dll|zip|ttf|otf)$') {
         $problems.Add("Forbidden public-source file: $relative")
     }

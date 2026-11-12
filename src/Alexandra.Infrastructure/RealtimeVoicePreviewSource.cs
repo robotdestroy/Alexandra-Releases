@@ -6,6 +6,8 @@ namespace Alexandra.Infrastructure;
 public sealed class RealtimeVoicePreviewSource(Func<IRealtimeTransport> transportFactory) : IVoicePreviewSource
 {
     public async Task<byte[]> GenerateAsync(string voice, string key, CancellationToken token)
+        => await GenerateLineAsync(voice, key, VoiceCatalog.SampleLine, false, token);
+    internal async Task<byte[]> GenerateLineAsync(string voice, string key, string line, bool verifyTranscript, CancellationToken token)
     {
         if (!VoiceCatalog.IsValid(voice)) throw new ArgumentException("Unsupported preview voice.", nameof(voice));
         if (string.IsNullOrWhiteSpace(key)) throw new ArgumentException("A key is required.", nameof(key));
@@ -20,6 +22,7 @@ public sealed class RealtimeVoicePreviewSource(Func<IRealtimeTransport> transpor
         using var pcm = new MemoryStream();
         var requested = false;
         string? responseId = null;
+        string? transcript = null;
         await foreach (var json in transport.ReceiveAsync(ct))
         {
             ct.ThrowIfCancellationRequested();
@@ -32,7 +35,7 @@ public sealed class RealtimeVoicePreviewSource(Func<IRealtimeTransport> transpor
                     if (e.GetProperty("session").GetProperty("audio").GetProperty("output").GetProperty("voice").GetString() != voice)
                         throw new InvalidOperationException("Preview voice was not confirmed.");
                     requested = true;
-                    await transport.SendAsync(JsonSerializer.Serialize(CreateResponse()), ct);
+                    await transport.SendAsync(JsonSerializer.Serialize(CreateLineResponse(line)), ct);
                     break;
                 case "response.created" when requested:
                     if (responseId is not null) throw new InvalidOperationException("Unexpected additional preview response.");
@@ -48,12 +51,28 @@ public sealed class RealtimeVoicePreviewSource(Func<IRealtimeTransport> transpor
                         throw new InvalidOperationException("Invalid preview audio.");
                     pcm.Write(bytes);
                     break;
+                case "response.output_audio_transcript.done" when requested:
+                    if (responseId is not null && e.TryGetProperty("response_id", out var transcriptId) && transcriptId.GetString() == responseId)
+                        transcript = e.GetProperty("transcript").GetString();
+                    break;
                 case "response.done" when requested:
                     var response = e.GetProperty("response");
                     if (responseId is null || response.GetProperty("id").GetString() != responseId ||
                         response.GetProperty("status").GetString() != "completed" || pcm.Length == 0 ||
                         response.GetProperty("output").EnumerateArray().Any(item => item.GetProperty("type").GetString() != "message"))
                         throw new InvalidOperationException("Preview did not complete.");
+                    if (verifyTranscript)
+                    {
+                        var messages = response.GetProperty("output");
+                        if (messages.GetArrayLength() != 1 || !messages[0].TryGetProperty("content", out var content) ||
+                            content.ValueKind != JsonValueKind.Array || content.GetArrayLength() != 1)
+                            throw new InvalidOperationException("Unexpected extra callout content.");
+                        var finalTranscript = content[0].TryGetProperty("transcript", out var t) &&
+                            t.ValueKind == JsonValueKind.String ? t.GetString() : null;
+                        static string Normalize(string? text) => string.Concat((text ?? "").Where(char.IsLetterOrDigit)).ToLowerInvariant();
+                        if (Normalize(finalTranscript) != Normalize(line) || transcript is not null && Normalize(transcript) != Normalize(line))
+                            throw new InvalidOperationException("Callout speech did not match the requested phrase.");
+                    }
                     return pcm.ToArray();
                 case "error":
                     // Provider messages can echo inputs; never show/log raw error payloads or credentials.
@@ -79,13 +98,14 @@ public sealed class RealtimeVoicePreviewSource(Func<IRealtimeTransport> transpor
             }
         };
     }
-    public static object CreateResponse() => new {
+    public static object CreateResponse() => CreateLineResponse(VoiceCatalog.SampleLine);
+    internal static object CreateLineResponse(string line) => new {
         type = "response.create",
         response = new {
             conversation = "none", output_modalities = new[] { "audio" },
             max_output_tokens = 512, tools = Array.Empty<object>(), tool_choice = "none",
             input = new[] { new { type = "message", role = "user",
-                content = new[] { new { type = "input_text", text = "Say exactly: " + VoiceCatalog.SampleLine } } } }
+                content = new[] { new { type = "input_text", text = "Say exactly: " + line } } } }
         }
     };
 }

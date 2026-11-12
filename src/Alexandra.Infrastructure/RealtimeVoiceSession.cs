@@ -505,13 +505,22 @@ public sealed class RealtimeVoiceSession(
                 string result;
                 try
                 {
-                    if (name is not ("research_elite" or "get_game_context" or "copy_system" or "paste_destination" or "save_screenshot" or "inspect_game" or "read_memory" or "update_memory" or "lookup_game_records")) throw new InvalidOperationException("That tool isn't available.");
+                    if (name is not ("research_elite" or "get_game_context" or "get_combat_context" or "copy_system" or "paste_destination" or "save_screenshot" or "inspect_game" or "read_memory" or "update_memory" or "lookup_game_records")) throw new InvalidOperationException("That tool isn't available.");
                     using var args = JsonDocument.Parse(call.GetProperty("arguments").GetString() ?? "{}");
                     if (name == "paste_destination" && (args.RootElement.ValueKind != JsonValueKind.Object || args.RootElement.EnumerateObject().Any()))
                         throw new InvalidOperationException("Paste accepts no text, keys or destination arguments; it uses only the app's verified copy.");
                     var question = args.RootElement.TryGetProperty("question", out var q) ? q.GetString() ?? "" : "";
-                    if (name is "research_elite" or "inspect_game" or "lookup_game_records" && (question.Length == 0 || question.Length > 6000))
+                    if (name is "research_elite" or "inspect_game" or "lookup_game_records" or "get_combat_context" && (string.IsNullOrWhiteSpace(question) || question.Length > 6000))
                         throw new InvalidOperationException("Ask a brief follow-up so I can research the right question.");
+                    CombatQueryKind? combat = null;
+                    if (name == "get_combat_context")
+                    {
+                        combat = args.RootElement.TryGetProperty("mode", out var mode) && mode.ValueKind == JsonValueKind.String
+                            ? mode.GetString() switch { "live" => CombatQueryKind.Live, "review" => CombatQueryKind.Review, _ => null }
+                            : null;
+                        if (combat is null || args.RootElement.EnumerateObject().Any(p => p.Name is not ("mode" or "question")))
+                            throw new InvalidOperationException("Choose live or review combat context with a brief question.");
+                    }
                     var system = args.RootElement.TryGetProperty("system", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null;
                     if (name == "copy_system" && !AnswerPolicy.IsSystemName(system))
                         throw new InvalidOperationException("Copy requires one exact system name, not a station, URL or sentence.");
@@ -532,7 +541,7 @@ public sealed class RealtimeVoiceSession(
                         recordShip = number;
                     }
                     _log.Write("voice.tool_start", name + " " + (name == "copy_system" ? system : name.Contains("memory") || records is not null ? "" : question), turn);
-                    result = await tool(new(name, question, turn, system, memory, records, recordShip), token);
+                    result = await tool(new(name, question, turn, system, memory, records, recordShip, combat), token);
                     _log.Write("voice.tool_done", name, turn);
                 }
                 catch (OperationCanceledException)

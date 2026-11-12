@@ -172,6 +172,7 @@ public sealed class VoicePreviewTests
         public List<JsonElement> Sent { get; } = [];
         public string? Model; public int Disposals;
         public string ConfirmedVoice = "marin", AudioResponseId = "preview", DoneStatus = "completed", OutputType = "message";
+        public string? Transcript;
         public byte[] Audio = new byte[480]; public bool WaitForever, ServiceError;
         public bool IsConnected => true;
         public Task ConnectAsync(string model, string key, CancellationToken token) { Model = model; return Task.CompletedTask; }
@@ -188,7 +189,8 @@ public sealed class VoicePreviewTests
                 {
                     Emit(new { type = "response.created", response = new { id = "preview" } });
                     Emit(new { type = "response.output_audio.delta", response_id = AudioResponseId, delta = Convert.ToBase64String(Audio) });
-                    Emit(new { type = "response.done", response = new { id = "preview", status = DoneStatus, output = new[] { new { type = OutputType } } } });
+                    Emit(new { type = "response.done", response = new { id = "preview", status = DoneStatus,
+                        output = new[] { new { type = OutputType, content = new[] { new { type = "audio", transcript = Transcript } } } } } });
                 }
             }
             return Task.CompletedTask;
@@ -241,6 +243,36 @@ public sealed class VoicePreviewTests
         var work = new RealtimeVoicePreviewSource(() => wire).GenerateAsync("marin", "synthetic-key", cancel.Token);
         cancel.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => work);
+        Assert.Equal(1, wire.Disposals);
+    }
+    [Theory]
+    [InlineData(CombatCalloutKind.ShieldsLost)]
+    [InlineData(CombatCalloutKind.LowHull)]
+    [InlineData(CombatCalloutKind.CriticalHull)]
+    [InlineData(CombatCalloutKind.HeatDamage)]
+    public async Task CalloutsUseSelectedVoiceFixedPhraseAndNoConversationOrTools(CombatCalloutKind kind)
+    {
+        var wire = new Wire { ConfirmedVoice = "cedar", Transcript = CombatCalloutLines.Text(kind) };
+        var audio = await new RealtimeCombatCalloutSource(() => wire).GenerateAsync(kind, "cedar", "synthetic-key", default);
+        Assert.Equal(wire.Audio, audio); Assert.Equal(RealtimeProtocol.Model, wire.Model);
+        var config = wire.Sent[0].GetProperty("session");
+        Assert.Equal("cedar", config.GetProperty("audio").GetProperty("output").GetProperty("voice").GetString());
+        Assert.Empty(config.GetProperty("tools").EnumerateArray());
+        var response = wire.Sent[1].GetProperty("response");
+        Assert.Equal("none", response.GetProperty("conversation").GetString());
+        Assert.Equal("Say exactly: " + CombatCalloutLines.Text(kind),
+            response.GetProperty("input")[0].GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Equal(2, wire.Sent.Count); Assert.Equal(1, wire.Disposals);
+    }
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Shields up.")]
+    [InlineData("Shields down. Turn around and fire.")]
+    public async Task OffScriptOrUnverifiedCalloutAudioIsRejected(string? transcript)
+    {
+        var wire = new Wire { Transcript = transcript };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new RealtimeCombatCalloutSource(() => wire)
+            .GenerateAsync(CombatCalloutKind.ShieldsLost, "marin", "synthetic-key", default));
         Assert.Equal(1, wire.Disposals);
     }
 }

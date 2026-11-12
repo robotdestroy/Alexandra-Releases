@@ -21,7 +21,7 @@ public partial class SetupWindow : Window
     private string? _device;
     public SetupWindow(SettingsStore store, LocalDiagnosticLog log,
         IVoicePreviewSource? previewSource = null, IStreamingAudioPlayer? previewPlayer = null,
-        IGameAutoStartService? autoStart = null, SetupMode mode = SetupMode.Settings)
+        IGameAutoStartService? autoStart = null, SetupMode mode = SetupMode.Settings, Func<string?>? sessionLogError = null)
     {
         InitializeComponent();
         _store = store;
@@ -47,6 +47,10 @@ public partial class SetupWindow : Window
         LoggingBox.IsChecked = value.DiagnosticLoggingEnabled;
         BrowserBox.IsChecked = value.ResearchBrowserEnabled;
         MemoryBox.IsChecked = value.MemoryEnabled;
+        SessionLogsBox.IsChecked = value.SessionLogsEnabled;
+        CombatCalloutsBox.IsChecked = value.CombatCalloutsEnabled;
+        SessionLogPath.Text = SettingsStore.SessionLogDirectory;
+        SessionLogStatus.Text = sessionLogError?.Invoke() ?? "";
         OpenWithEliteBox.IsChecked = value.OpenWithElite;
         if (mode == SetupMode.FirstRun)
         {
@@ -148,6 +152,8 @@ public partial class SetupWindow : Window
                 value.DiagnosticLoggingEnabled = LoggingBox.IsChecked == true;
                 value.ResearchBrowserEnabled = BrowserBox.IsChecked == true;
                 value.MemoryEnabled = MemoryBox.IsChecked == true;
+                value.SessionLogsEnabled = SessionLogsBox.IsChecked == true;
+                value.CombatCalloutsEnabled = CombatCalloutsBox.IsChecked == true;
             }
             value.SetupCompleted = true;
             _store.Save();
@@ -170,6 +176,15 @@ public partial class SetupWindow : Window
     private void ViewLogs(object sender, RoutedEventArgs e)
     {
         if (_mode == SetupMode.Settings) new DiagnosticsWindow(_log) { Owner = this }.ShowDialog();
+    }
+    private void OpenSessionLogs(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(SettingsStore.SessionLogDirectory);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(SettingsStore.SessionLogDirectory) { UseShellExecute = true });
+        }
+        catch (Exception) { ErrorText.Text = "Could not open the session logs folder. Check access to the path above."; }
     }
 }
 
