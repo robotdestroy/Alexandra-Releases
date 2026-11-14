@@ -58,21 +58,23 @@ public sealed class JournalContextSource(Func<string> directory) : IGameContextS
         public string? System { get; private set; }
         private string? _commander;
         private long? _shipId;
+        public long? ActiveShipId => _shipId;
+        public DockingContext? Docking { get; private set; }
         private DateTimeOffset? _latest;
         public DateTimeOffset SessionAt { get; private set; } = DateTimeOffset.MaxValue;
         public bool GameLoaded => _combat.Loaded;
         public JsonElement? CommunityGoals => _facts.TryGetValue("CommunityGoal", out var goals) ? goals : null;
-        public string Export() => JsonSerializer.Serialize(new SnapshotState(_facts, System, _commander, _shipId, _latest, SessionAt, _combat));
+        public string Export() => JsonSerializer.Serialize(new SnapshotState(_facts, System, _commander, _shipId, _latest, SessionAt, _combat, Docking));
         public static JournalSnapshot Restore(string json)
         {
             var saved = JsonSerializer.Deserialize<SnapshotState>(json) ?? throw new JsonException("Missing snapshot.");
             var state = new JournalSnapshot { System = saved.System, _commander = saved.Commander,
-                _shipId = saved.ShipId, _latest = saved.Latest, SessionAt = saved.SessionAt, _combat = saved.Combat ?? new() };
+                _shipId = saved.ShipId, _latest = saved.Latest, SessionAt = saved.SessionAt, _combat = saved.Combat ?? new(), Docking = saved.Docking };
             foreach (var pair in saved.Facts) state._facts[pair.Key] = pair.Value.Clone();
             return state;
         }
         public sealed record SnapshotState(Dictionary<string, JsonElement> Facts, string? System, string? Commander,
-            long? ShipId, DateTimeOffset? Latest, DateTimeOffset SessionAt, CombatState? Combat = null);
+            long? ShipId, DateTimeOffset? Latest, DateTimeOffset SessionAt, CombatState? Combat = null, DockingContext? Docking = null);
         public void Apply(string line)
         {
             if (string.IsNullOrWhiteSpace(line)) return;
@@ -82,6 +84,7 @@ public sealed class JournalContextSource(Func<string> directory) : IGameContextS
             var kind = e.TryGetProperty("event", out var eventName) ? eventName.GetString() : null;
             var at = Timestamp(e);
             if (_latest is not null && at < _latest) return;
+            Docking = DockingState.Apply(Docking, e);
             if (kind == "Commander" && MemoryProgress.Text(e, "Name") is { } identity && identity != _commander)
             {
                 _facts.Clear(); System = null; _shipId = null; _combat = new(); _commander = identity;
@@ -133,7 +136,7 @@ public sealed class JournalContextSource(Func<string> directory) : IGameContextS
         public GameContext Build(bool limited = false, int skipped = 0) =>
             new(System, JsonSerializer.Serialize(new {
                 currentSystem = System, observedAt = _latest, sessionAt = SessionAt,
-                historyLimited = limited, skippedRecords = skipped, facts = _facts
+                historyLimited = limited, skippedRecords = skipped, docking = Docking, facts = _facts
             }), _latest is null ? "No readable journal events." : $"Last journal event: {_latest:O}");
         public object CombatView(JsonElement? status, DateTimeOffset now, bool? gameSessionActive = null) => _combat.View(status, now, gameSessionActive);
         public object CombatFit()

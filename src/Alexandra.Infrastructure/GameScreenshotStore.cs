@@ -26,7 +26,7 @@ public sealed class GameScreenshotStore(string folder) : IGameScreenshotStore
             }
             token.ThrowIfCancellationRequested();
             File.Move(temporary, path, false);
-            return new(fileName, "Pictures / Alexandra");
+            return new(fileName, "Pictures / Alexandra", path, DateTimeOffset.UtcNow);
         }
         catch
         {

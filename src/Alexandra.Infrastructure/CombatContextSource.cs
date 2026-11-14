@@ -70,13 +70,21 @@ public sealed class CombatContextSource(Func<string> directory, TimeProvider? cl
             var callouts = CalloutObservation(combat, Hash(root.ToUpperInvariant() + "|" +
                 combat.GetProperty("sessionAt").GetRawText() + "|" + combat.GetProperty("contextAt").GetRawText() +
                 "|" + JsonSerializer.Serialize(loadout)), available);
+            var continuity = Hash(JsonSerializer.Serialize(new {
+                root = Hash(root.ToUpperInvariant()), sessionAt = combat.GetProperty("sessionAt"),
+                contextAt = combat.GetProperty("contextAt"), vehicle = combat.GetProperty("vehicle"),
+                gameStartedAt = gameSession?.StartedAt, currentSystem = _snapshot.System,
+                shipId = _snapshot.ActiveShipId
+            }));
             var diagnostic = $"Cockpit available={available}; loaded={combat.GetProperty("loaded")}; game session active={activeSession}; journals={string.Join(",", files.Select(Path.GetFileName))}; session={combat.GetProperty("sessionAt")}";
             var result = new CombatContext(JsonSerializer.Serialize(new {
                 combat, loadout, currentSystem = _snapshot.System,
                 historyLimited = true, historyNote = "Fast context covers up to three latest journal files; older combat history may be absent. Use commander memory for older session reviews.",
                 skippedOrReplacedData = _partial,
-                responsePolicy = "For a live cockpit question, give one short fact or one relevant next step. No research_elite lookup for missing private telemetry. Target and hull percentages must be described as last reported, not live. Do not diagnose causation from a timeline alone."
-            }, Json), Hash(evidence), now, available, callouts, diagnostic);
+                capabilities = new { ownShieldPercentage = false, ownShieldState = "up/down only", liveAmmunition = false },
+                responsePolicy = "This is a snapshot at the time of the question. For a single cockpit question, give one short fact. For a sitrep, give two short sentences with the relevant available readings, at most 45 words. If asked for your own shield percentage, including a follow-up like 'a percentage?', say 'I can read shields up or down, but not your shield percentage.' Do not substitute a target's health or repeat shields-up as a percentage answer. No research_elite for missing private telemetry. Target and hull percentages are last reported, not live. Do not diagnose causation from a timeline alone."
+            }, Json), Hash(evidence), now, available, callouts, diagnostic, _snapshot.SessionAt,
+                continuity, _snapshot.GameLoaded && activeSession != false ? _snapshot.Docking : null);
             Volatile.Write(ref _latest, result); return result;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)

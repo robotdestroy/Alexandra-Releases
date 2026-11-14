@@ -11,7 +11,8 @@ public sealed record VoiceFrame(int Turn, string ItemId, byte[] Pcm);
 public sealed record VoiceStatus(int Turn, string Text, bool Busy, bool Attention = false);
 public sealed record VoiceFault(int Turn, string Message);
 public sealed record VoiceToolCall(string Name, string Question, int Turn, string? System = null, MemoryEdit? Memory = null,
-    GameRecordTopic? Records = null, long? RecordShipId = null, CombatQueryKind? Combat = null);
+    GameRecordTopic? Records = null, long? RecordShipId = null, CombatQueryKind? Combat = null,
+    ReminderEdit? Reminder = null, string? Caption = null, int? LandingPad = null);
 public interface IVoiceSession : IAsyncDisposable
 {
     event Action<VoiceFrame>? AudioReceived;

@@ -505,14 +505,27 @@ public sealed class RealtimeVoiceSession(
                 string result;
                 try
                 {
-                    if (name is not ("research_elite" or "get_game_context" or "get_combat_context" or "copy_system" or "paste_destination" or "save_screenshot" or "inspect_game" or "read_memory" or "update_memory" or "lookup_game_records")) throw new InvalidOperationException("That tool isn't available.");
+                    if (name is not ("research_elite" or "get_game_context" or "get_combat_context" or "get_landing_pad" or "copy_system" or "paste_destination" or "save_screenshot" or "inspect_game" or "read_memory" or "update_memory" or "lookup_game_records" or "read_reminders" or "update_reminder")) throw new InvalidOperationException("That tool isn't available.");
                     using var args = JsonDocument.Parse(call.GetProperty("arguments").GetString() ?? "{}");
+                    if (args.RootElement.ValueKind != JsonValueKind.Object) throw new InvalidOperationException("Tool arguments must be an object.");
                     if (name == "paste_destination" && (args.RootElement.ValueKind != JsonValueKind.Object || args.RootElement.EnumerateObject().Any()))
                         throw new InvalidOperationException("Paste accepts no text, keys or destination arguments; it uses only the app's verified copy.");
                     var question = args.RootElement.TryGetProperty("question", out var q) ? q.GetString() ?? "" : "";
                     if (name is "research_elite" or "inspect_game" or "lookup_game_records" or "get_combat_context" && (string.IsNullOrWhiteSpace(question) || question.Length > 6000))
                         throw new InvalidOperationException("Ask a brief follow-up so I can research the right question.");
                     CombatQueryKind? combat = null;
+                    int? landingPad = null;
+                    if (name == "get_landing_pad")
+                    {
+                        if (args.RootElement.EnumerateObject().Any(p => p.Name != "pad"))
+                            throw new InvalidOperationException("Pad lookup accepts only an optional pad number.");
+                        if (args.RootElement.TryGetProperty("pad", out var pad))
+                        {
+                            if (pad.ValueKind != JsonValueKind.Number || !pad.TryGetInt32(out var number) || number is < 1 or > 64)
+                                throw new InvalidOperationException("Use a whole pad number from 1 to 64, or omit it for the assigned pad.");
+                            landingPad = number;
+                        }
+                    }
                     if (name == "get_combat_context")
                     {
                         combat = args.RootElement.TryGetProperty("mode", out var mode) && mode.ValueKind == JsonValueKind.String
@@ -525,6 +538,29 @@ public sealed class RealtimeVoiceSession(
                     if (name == "copy_system" && !AnswerPolicy.IsSystemName(system))
                         throw new InvalidOperationException("Copy requires one exact system name, not a station, URL or sentence.");
                     MemoryEdit? memory = null;
+                    ReminderEdit? reminder = null;
+                    string? caption = null;
+                    if (name == "read_reminders" && args.RootElement.EnumerateObject().Any())
+                        throw new InvalidOperationException("Reading reminders accepts no arguments.");
+                    if (name == "update_reminder")
+                    {
+                        if (args.RootElement.EnumerateObject().Any(p => p.Name is not ("action" or "trigger" or "text" or "target" or "id") || p.Value.ValueKind != JsonValueKind.String))
+                            throw new InvalidOperationException("Use only the supported reminder fields.");
+                        string? Arg(string field) => args.RootElement.TryGetProperty(field, out var v) ? v.GetString() : null;
+                        var trigger = Arg("trigger") switch {
+                            "docked" => ReminderTrigger.Docked, "system" => ReminderTrigger.SystemArrival,
+                            "touchdown" => ReminderTrigger.Touchdown, null => (ReminderTrigger?)null,
+                            _ => throw new InvalidOperationException("That reminder trigger isn't supported.")
+                        };
+                        reminder = new(Arg("action") ?? "", trigger, Arg("text"), Arg("target"), Arg("id"));
+                    }
+                    if (name == "save_screenshot")
+                    {
+                        if (args.RootElement.EnumerateObject().Any(p => p.Name != "caption" || p.Value.ValueKind != JsonValueKind.String))
+                            throw new InvalidOperationException("A photo accepts only an optional caption, not a filename or destination.");
+                        caption = args.RootElement.TryGetProperty("caption", out var c) ? c.GetString() : null;
+                        if (caption?.Length > 180) throw new InvalidOperationException("Keep the photo caption under 180 characters.");
+                    }
                     if (name == "update_memory")
                     {
                         string? Arg(string key) => args.RootElement.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
@@ -541,7 +577,7 @@ public sealed class RealtimeVoiceSession(
                         recordShip = number;
                     }
                     _log.Write("voice.tool_start", name + " " + (name == "copy_system" ? system : name.Contains("memory") || records is not null ? "" : question), turn);
-                    result = await tool(new(name, question, turn, system, memory, records, recordShip, combat), token);
+                    result = await tool(new(name, question, turn, system, memory, records, recordShip, combat, reminder, caption, landingPad), token);
                     _log.Write("voice.tool_done", name, turn);
                 }
                 catch (OperationCanceledException)

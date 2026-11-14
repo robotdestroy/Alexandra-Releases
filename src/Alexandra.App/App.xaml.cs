@@ -6,11 +6,21 @@ public partial class App : Application
     [STAThread]
     private static void Main(string[] args)
     {
-        // Installer/update hooks must exit before settings, microphone, UI or network initialization.
+        // The install hook rescues legacy personal data from the installer's
+        // rollback directory before it is removed. No audio, WPF or cloud work.
         VelopackApp.Build().SetAutoApplyOnStartup(false)
+            .OnAfterInstallFastCallback(_ => AppDataPaths.Initialize())
             .OnBeforeUpdateFastCallback(_ => GameAutoStartService.StopForUpdate())
             .OnBeforeUninstallFastCallback(_ => GameAutoStartService.RemoveForUninstall())
             .Run();
+        try { AppDataPaths.Initialize(); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            if (!args.Contains(GameAutoStartService.WatchArgument, StringComparer.Ordinal))
+                MessageBox.Show("Alexandra could not safely migrate your saved data. Nothing was deleted. Close older copies of Alexandra and try again. Your data belongs in %LOCALAPPDATA%\\AlexandraData. If this continues, ask for help before reinstalling.",
+                    "Alexandra — saved data", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         // Headless watcher: no WPF application, audio, game journals, cloud clients or updater polling.
         if (args.Length == 1 && args[0] == GameAutoStartService.WatchArgument)
         { GameWatcherHost.Run(); return; }

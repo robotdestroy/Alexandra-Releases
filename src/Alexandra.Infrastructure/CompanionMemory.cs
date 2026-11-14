@@ -8,9 +8,9 @@ namespace Alexandra.Infrastructure;
 
 // A local, versioned checkpoint: projected facts + byte cursors are committed together.
 // No raw journal archive, audio, screenshot, API credential, or model-written game fact is stored.
-public sealed class CompanionMemory(Func<string> journalDirectory, string memoryDirectory,
+public sealed partial class CompanionMemory(Func<string> journalDirectory, string memoryDirectory,
     Func<bool>? enabled = null, TimeProvider? clock = null, ISessionLogWriter? sessionLogs = null,
-    Func<bool>? sessionLogsEnabled = null) : ICompanionMemory
+    Func<bool>? sessionLogsEnabled = null) : ICompanionMemory, IReminderMemory
 {
     private readonly SemaphoreSlim _gate = new(1);
     private readonly JournalFileCatalog _journalFiles = new();
@@ -243,7 +243,7 @@ public sealed class CompanionMemory(Func<string> journalDirectory, string memory
                     if (_document.SessionLogs is { } book && !book.IsValid()) throw new JsonException("Invalid session journal state.");
                     if (_document.Profiles.Values.Any(p => p is null || p.Items is null || p.Seen is null || p.Progress is null ||
                         p.Progress.Materials is null || p.Progress.Missions is null || p.Progress.Visits is null ||
-                        p.Progress.Milestones is null || p.Progress.Construction is null) || _document.Cursors.Values.Any(c => c is null || c.Offset < 0))
+                        p.Progress.Milestones is null || p.Progress.Construction is null || p.Reminders is null || !p.Reminders.IsValid()) || _document.Cursors.Values.Any(c => c is null || c.Offset < 0))
                         throw new JsonException("Invalid memory state.");
                     foreach (var key in _document.Profiles.Keys) _ = Snapshot(key);
                 }
@@ -281,7 +281,7 @@ public sealed class CompanionMemory(Func<string> journalDirectory, string memory
         if (rebuild)
         {
             _document!.SessionLogs?.MarkGap(); // Keep log watermarks: replay must not double-count old events.
-            foreach (var profile in _document!.Profiles.Values) { profile.Snapshot = null; profile.Progress = new(); profile.Latest = null; profile.Seen.Clear(); profile.SeenSet = null; }
+            foreach (var profile in _document!.Profiles.Values) { profile.Snapshot = null; profile.Progress = new(); profile.Latest = null; profile.Seen.Clear(); profile.SeenSet = null; profile.Reminders.ResetLiveState(); }
             _snapshots.Clear(); _document.Cursors.Clear(); _document.CurrentProfile = null; _document.Latest = null;
             _document.Gaps++; _dirty = true;
         }
@@ -372,6 +372,7 @@ public sealed class CompanionMemory(Func<string> journalDirectory, string memory
         if (profile.Latest is { } latest && at < latest) { _document.Gaps++; _document.SessionLogs?.MarkGap(); return; }
         var snapshot = Snapshot(scope);
         snapshot.Apply(json);
+        profile.Reminders.Apply(e);
         var sessionChanged = sessionLogs is not null && _document.SessionLogs?.Apply(SessionScope(scope), e, snapshot.System,
             profile.Progress.Missions, enabled?.Invoke() == false ? [] : profile.Items, snapshot.CommunityGoals) == true;
         profile.Progress.Apply(e, snapshot.System);
@@ -480,6 +481,7 @@ public sealed class JournalCursor
 }
 public sealed class MemoryProfile
 {
+    public ReminderBook Reminders { get; set; } = new();
     public string? Snapshot { get; set; }
     public DateTimeOffset? Latest { get; set; }
     public MemoryProgress Progress { get; set; } = new();

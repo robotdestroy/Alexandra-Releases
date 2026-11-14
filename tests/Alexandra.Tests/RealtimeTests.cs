@@ -32,7 +32,7 @@ public sealed partial class RealtimeTests
         Assert.Equal("auto", session.GetProperty("tool_choice").GetString());
         Assert.Equal("marin", session.GetProperty("audio").GetProperty("output").GetProperty("voice").GetString());
         Assert.Contains("NOT a command interface", session.GetProperty("instructions").GetString());
-        Assert.Equal(10, session.GetProperty("tools").GetArrayLength());
+        Assert.Equal(13, session.GetProperty("tools").GetArrayLength());
     }
     [Fact]
     public void VoicePolicyRequiresBriefAnswersFreshContextAndAutomaticPublicFallback()
@@ -49,8 +49,16 @@ public sealed partial class RealtimeTests
         Assert.Contains("Call tools silently", prompt);
         Assert.Contains("community report, not proof", prompt);
         Assert.Equal("marin", config.GetProperty("audio").GetProperty("output").GetProperty("voice").GetString());
-        Assert.All(config.GetProperty("tools").EnumerateArray(), tool =>
+        Assert.All(config.GetProperty("tools").EnumerateArray().Where(t => t.GetProperty("name").GetString() is not ("read_reminders" or "update_reminder" or "get_landing_pad")), tool =>
             Assert.Contains("research_elite", tool.GetProperty("description").GetString() + tool.GetProperty("name").GetString()));
+    }
+    [Fact]
+    public void CombatAndPadPolicyAnswersTheActualQuestionWithoutInventingMissingHealth()
+    {
+        Assert.Contains("a sitrep or ship-status summary", RealtimeProtocol.Instructions);
+        Assert.Contains("not your shield percentage", RealtimeProtocol.Instructions);
+        Assert.Contains("get_landing_pad FIRST", RealtimeProtocol.Instructions);
+        Assert.Contains("green-lights-on-the-right", RealtimeProtocol.Instructions);
     }
     [Fact]
     public void VoicePolicyOmitsRoutineDisclaimersAndClipboardTutorialsButKeepsEvidenceChecks()

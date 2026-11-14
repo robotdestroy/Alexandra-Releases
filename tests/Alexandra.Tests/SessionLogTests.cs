@@ -26,6 +26,20 @@ public sealed class SessionLogTests : IDisposable
         $$"""{"timestamp":"2026-11-11T{{at}}Z","event":"LoadGame","Commander":"Synthetic Log Pilot","FID":"{{fid}}","Ship":"mandalay","ShipID":1}""");
 
     [Fact]
+    public async Task RetainsShipsUsedAcrossChangesAndAppRestarts()
+    {
+        await File.AppendAllTextAsync(Journal, await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "session-ship-switches.jsonl")));
+        await Create().SynchronizeAsync(default);
+        Assert.Contains("- Ships used: Federal Corvette; Mandalay", await OnlyLog());
+        await Append("""{"timestamp":"2026-11-11T10:02:00Z","event":"Loadout","Ship":"python","ShipID":3}""");
+        await Create().SynchronizeAsync(default);
+        var markdown = await OnlyLog();
+        Assert.Contains("- Ship: Python", markdown);
+        Assert.Contains("- Ships used: Federal Corvette; Mandalay; Python", markdown);
+        Assert.True(SessionLogSearch.Matches(markdown, "Corvette"));
+    }
+
+    [Fact]
     public async Task WritesReadableRecapAndMissionProgressWithoutRawIdentity()
     {
         await Fixture(); await Shutdown(); await Create().SynchronizeAsync(default);

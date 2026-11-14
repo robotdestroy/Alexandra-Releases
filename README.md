@@ -19,8 +19,12 @@ A voice-first companion for Elite Dangerous on Windows. Stay in the game: hold a
 - Optional brief combat callouts for shield loss, low hull, overheating and heat damage. On by default; disable in Setup. Selected-voice clips use API credit to generate and are reused in memory.
 - Public research using web search and an isolated browser, including Inara and community sources.
 - Persistent local commander memory for goals, notes, preferences and progress, with journal catch-up after time away.
-- Local Markdown session journals: readable recaps, stated gameplay plans, confirmed community-goal rewards/progress, missions, combat and next-session reminders. Right-click → Open session logs.
+- One-time voice reminders: “When I dock, remind me to claim my rewards.” Also supports arriving in a named system and touching down. Saved per commander; waits for a quiet moment outside combat. [Reminder details](docs/REMINDERS.md).
+- Local Markdown session journals: readable recaps, stated gameplay plans, confirmed community-goal rewards/progress, missions, combat and next-session reminders. Right-click → View most recent session log or View session logs to read or save a copy, even without a Markdown app.
+- Search journals by ship used or keyword, with a Dextra-style session header. Browse saved photo thumbnails, enlarge and zoom them, or copy the full-resolution image to the clipboard.
+- Spoken landing-pad directions: ask “Where is pad 24?” or “Where is my pad?” Uses local docking records and mapped Coriolis/Orbis/Ocellus layouts; unknown layouts are not guessed.
 - Inspect the visible game for visual questions; “take a photo” or “take a screenshot” saves a game image locally in Pictures / Alexandra.
+- Caption requested photos: “Take a photo—first landing on this planet.” Active session journals link the local image with your caption, location and time; no automatic photos or image uploads for save-only requests.
 - Copy a validated system name. An explicitly requested paste sends only Ctrl+V with Elite's Galaxy Map ready; the player submits the search and plots the route.
 - Minimal waveform overlay, configurable voice input, window positioning and optional automatic opening with Elite.
 
@@ -30,7 +34,7 @@ A voice-first companion for Elite Dangerous on Windows. Stay in the game: hold a
 - Keys are stored separately from settings, encrypted for the Windows user. The key's account pays for API usage.
 - Voice, relevant game context, selected memories and requested game images can be sent to OpenAI after the user enables cloud operation in setup.
 - Conversation debug logging is optional and off by default. Logs stay local and may contain conversation details.
-- Gameplay session journals are on by default, separate from debug logs. They contain personal game history, explicitly saved goals and short excerpts of stated gameplay plans, not full conversations. They stay in `%LOCALAPPDATA%/Alexandra/Session Logs`; switch off in Setup. No extra API use. See [session journals](docs/SESSION-JOURNALS.md).
+- Gameplay session journals are on by default, separate from debug logs. They contain personal game history, explicitly saved goals and short excerpts of stated gameplay plans, not full conversations. They stay in `%LOCALAPPDATA%/AlexandraData/Session Logs`; switch off in Setup. No extra API use. See [session journals](docs/SESSION-JOURNALS.md).
 - Research uses an isolated browser, not the user's logged-in browsing profile. Private Inara account access is not implemented.
 - No flight automation. Missing or stale information is not proof of current game state.
 - See [source publication notes](docs/PUBLIC-SOURCE.md) for audit scope, bundled assets and licensing status.

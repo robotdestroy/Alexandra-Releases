@@ -6,10 +6,16 @@ namespace Alexandra.Core;
 public static partial class ScreenRequestPolicy
 {
     public static bool CanSave(string utterance) => !Excluded(utterance) &&
-        !SaveDenied().IsMatch(utterance) && !PastSaveQuestion().IsMatch(utterance) && SaveRequest().IsMatch(utterance);
+        !SaveDenied().IsMatch(utterance) && !PastSaveQuestion().IsMatch(utterance) &&
+        !Regex.IsMatch(utterance, @"\b(remind me|reminder|automatically|whenever|every time)\b", RegexOptions.IgnoreCase) && SaveRequest().IsMatch(utterance);
 
     public static bool CanInspect(string utterance) => !Excluded(utterance) &&
-        !CaptureDenied().IsMatch(utterance) && VisualRequest().IsMatch(utterance);
+        !CaptureDenied().IsMatch(utterance) &&
+        (VisualRequest().IsMatch(utterance) || CurrentPadQuestion().IsMatch(utterance) &&
+            !Regex.IsMatch(utterance, @"\b(remind|automatically|whenever|every time|generally)\b", RegexOptions.IgnoreCase));
+
+    [GeneratedRegex(@"\b(?:where\s+(?:is|are)|where['’]s|find|locate|show\s+me)\s+(?:(?:my|the|assigned|current)\s+)*(?:landing\s+)?pad(?:\s+(?:number\s+)?(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty))?\b", RegexOptions.IgnoreCase)]
+    private static partial Regex CurrentPadQuestion();
 
     private static bool Excluded(string text) => string.IsNullOrWhiteSpace(text) ||
         ScreenshotInstructions().IsMatch(text) || OtherApp().IsMatch(text);

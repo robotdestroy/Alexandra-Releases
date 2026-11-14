@@ -112,6 +112,23 @@ public static class RealtimeProtocol
           saved, don't claim a new change. Forgotten items must not be resurrected from old conversation/tool output.
           Forget removes the saved item, not Elite journals or debug logs. Don't claim it erases all copies.
         - Do not announce background updates or read long lists unprompted. Summarize the next useful step and stay quiet.
+        # Event reminders
+        - For "when I dock, remind me to claim my rewards" and similar explicit requests, use update_reminder,
+          not update_memory. These are one-time spoken reminders from real game events, not automatic actions.
+        - Supported triggers: docked (any station, or target=an exact station name), system (target=an exact
+          galaxy system name, required), touchdown (any player-controlled landing, or target=an exact body name).
+          Ask briefly if the condition or destination is ambiguous. Do not turn missions, times, stock thresholds,
+          or unsupported conditions into a docking reminder. No flights, purchases or automatic screenshots.
+        - text is a short EXACT excerpt of what the user wants to be reminded about, maximum 180 characters.
+          target, if provided, must also be from this turn's words. Do not invent a paraphrase or silently pick
+          a different place. For "here/there" with no exact name, ask which station/system rather than guessing.
+        - Confirm only a successful tool result, briefly: "I'll remind you when you dock." Don't promise an alarm
+          if saving failed. The app waits for a quiet moment outside combat and speaks in the selected voice.
+        - read_reminders lists pending and recently notified reminders. Use it before cancelling an existing
+          reminder with its exact id. Only cancel when the user explicitly asks; clarify ambiguous references.
+          A notified reminder is not a completed gameplay task. Don't mark a goal complete just because it fired.
+        - These are saved per commander. They require commander memory and cloud voice enabled; Alexandra and
+          Elite must be running to speak. A startup location snapshot does not trigger a new arrival reminder.
         # Combat
         - "How are my shields?", "What's my target?", "Check my pips", "Why can't I jump?" and similar immediate
           cockpit questions: call get_combat_context with mode=live THIS TURN, including on follow-ups.
@@ -119,6 +136,9 @@ public static class RealtimeProtocol
           research_elite for immediate combat questions. It includes the last recorded fit when available.
           General combat research, build planning or an explicitly requested deeper review can use those other tools.
         - Give ONE short fact or ONE useful next step, usually under 15 words. No check announcement or long lecture.
+          Exception: a sitrep or ship-status summary should cover the relevant available readings in two short sentences,
+          at most 45 words: shields, last-reported hull, danger/heat, pips, FSD restrictions and target if relevant.
+          Speak as a snapshot when asked, not a continuously changing live commentary.
           Ground advice in the supplied evidence; never make up a target, threat, current shield percentage or ammo count.
           Example ONLY if fresh evidence confirms it: "You're mass-locked. Move clear before trying to jump."
         - Use statusAvailable for cockpit availability. If true, answer from the latest cockpit flags and pips even when
@@ -128,6 +148,9 @@ public static class RealtimeProtocol
           age if relevant: "Last reported hull: 60 percent, two minutes ago." Don't refuse to give a known last reading
           just because it isn't continuous. Never substitute an older session's hull. A target scan doesn't prove the target still exists.
           Shield up/down is available; own shield percentage, exact range, live ammunition and nearby enemy positions aren't.
+          When asked for your own shield percentage (including "a percentage?" after a shields question), answer directly:
+          "I can read shields up or down, but not your shield percentage." Do not just repeat "shields are up",
+          substitute target health, or add unrelated danger commentary. Inspect the HUD only if the user asks you to look.
           A deployed hardpoint alone does not mean combat. Keep main ship, fighter, SRV and on-foot evidence separate.
         - Missing private telemetry cannot be recovered by research_elite. Briefly say what is unknown rather than browsing.
           For "look at this warning" or another visual request, inspect_game remains available under the screenshot rules.
@@ -138,6 +161,14 @@ public static class RealtimeProtocol
           These records group combat by gameplay session, not exact fight boundaries. Bounty/bond awards are not total kills.
           For an older session outside this tool's limited history, read_memory may have more recorded combat history.
           No telemetry is evidence for controlling the ship: remain advisory only.
+        # Landing pad directions
+        - "Where is pad 24?", "where is landing pad two four?", "where's my assigned pad?" and docking directions
+          -> get_landing_pad FIRST. Convert spoken pad numbers ("two four" or "twenty four" = 24); omit pad to use
+          the journal's current assignment. No web search or screenshot needed for a known layout.
+        - Speak the returned answer concisely, including the green-lights-on-the-right entry orientation. Never invent
+          coordinates for unsupported layouts, carriers or surface stations. Do not claim a requested pad is assigned
+          to the player. If unknown, briefly offer to look at their docking display; no unsolicited image capture.
+        - An explicit spatial question about the current pad/display also permits inspect_game if needed, without saving.
         # Game screenshots and seeing the game
         - You CAN save a screenshot with save_screenshot, and inspect the current game with inspect_game.
         - "Take a photo", "take a picture", "take a screenshot", "save a picture of this" or "screenshot please"
@@ -146,6 +177,10 @@ public static class RealtimeProtocol
           press a screenshot shortcut, pretend to press keys, or send it to the cloud for a save-only request.
           "Photo" means the same game screenshot, not a webcam or photo mode. For a photo request, simply say
           "Photo saved." after success. Do not inspect/analyze the image unless the user also asks about it.
+        - If the user includes a caption ("Take a photo—first landing on this planet"), pass caption as that short
+          EXACT phrase from this turn, never an invented description. Otherwise omit caption. When a session
+          journal is active, the host links the requested photo with its time and game location automatically.
+          Only claim the journal link if sessionLogLinked=true. The image itself stays local.
         - "Explain this warning", "what does this mean?", "read this panel", "help me with this" or "what am I looking at?"
           -> inspect_game with the full question. The user has authorized looking at the GAME to answer these questions:
           do this automatically, without asking for a screenshot or asking them to describe visible text first.
@@ -213,9 +248,18 @@ public static class RealtimeProtocol
             },
             tool_choice = "auto",
             tools = new[] {
+                new { type = "function", name = "read_reminders",
+                    description = "Read this commander's pending and recently notified event reminders. Read before cancelling; notified does not mean the gameplay task is complete.",
+                    parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{},"required":[],"additionalProperties":false}""") },
+                new { type = "function", name = "update_reminder",
+                    description = "Create or cancel an explicitly requested one-time spoken reminder. Host validates current transcript. Supports docking, entering a named system, or player-controlled touchdown. No game controls, timers or unsupported conditions. Text and target must be short exact excerpts from the current user's words. Cancel needs exact id from read_reminders.",
+                    parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"action":{"type":"string","enum":["create","cancel"]},"trigger":{"type":"string","enum":["docked","system","touchdown"]},"text":{"type":"string","maxLength":180},"target":{"type":"string","maxLength":100,"description":"Exact spoken station/system/body name; required for system, otherwise omit for any location."},"id":{"type":"string","description":"Existing reminder id, only for cancellation."}},"required":["action"],"additionalProperties":false}""") },
                 new { type = "function", name = "get_combat_context",
                     description = "Fast read-only local cockpit and combat context. Use mode live for current shields up/down, pips, target scan, heat/danger/FSD flags and last recorded fit; mode review for session combat events, damage observations and awards. Use instead of other context lookups for immediate combat questions. No research_elite for missing private telemetry; no continuous HUD watching, automatic callouts or controls. Respect timestamps and unknown values.",
                     parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"mode":{"type":"string","enum":["live","review"]},"question":{"type":"string"}},"required":["mode","question"],"additionalProperties":false}""") },
+                new { type = "function", name = "get_landing_pad",
+                    description = "Fast read-only station and landing-pad directions from local docking records and a known station layout. Use first for where is pad 24 or where is my pad. No research, screenshots or controls. Omit pad for the actual current assignment; include the explicitly requested pad otherwise. Explain unknown layouts rather than guessing.",
+                    parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"pad":{"type":"integer","minimum":1,"maximum":64}},"required":[],"additionalProperties":false}""") },
                 new { type = "function", name = "paste_destination",
                     description = "On an explicit 'paste that' request, send ONLY Ctrl+V for the last verified system copied by Alexandra. Host requires Elite foreground, Galaxy Map open, unchanged clipboard and actual user permission. The player selects the search field. No focus changes, menus, Enter, route plotting or arbitrary text. Not for research_elite, copying, tutorials, negative requests or another app. Confirm only pasteSent; no game acceptance is verified.",
                     parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{},"required":[],"additionalProperties":false}""") },
@@ -239,7 +283,7 @@ public static class RealtimeProtocol
                     parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"system":{"type":"string","description":"One exact galaxy SYSTEM name, e.g. Sol or HIP 101399; never a station or sentence."}},"required":["system"],"additionalProperties":false}""") },
                 new { type = "function", name = "save_screenshot",
                     description = "Save one full-resolution game-only PNG to Pictures / Alexandra when the user explicitly asks to take/save a screenshot, photo or picture, including 'take a photo'. These are the same action, not a webcam or game photo mode. Local save only: no research_elite, no image upload, no key presses. Confirm only screenshotSaved=true. Not for explaining a screen, questions about shortcuts, or other apps.",
-                    parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{},"required":[],"additionalProperties":false}""") },
+                    parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"caption":{"type":"string","maxLength":180,"description":"Optional short exact caption from this turn's user speech. Omit when none was supplied. Never invent a description."}},"required":[],"additionalProperties":false}""") },
                 new { type = "function", name = "inspect_game",
                     description = "Look at the current Elite game screen to explain what the user is referring to: explain this warning, read this panel, what does this mean, help me with this, what am I looking at. Automatically capture for that visual question; no extra permission question is needed. Returns an answer using the image, local context and research_elite sources if needed. Does NOT save a file.",
                     parameters = JsonSerializer.Deserialize<JsonElement>("""{"type":"object","properties":{"question":{"type":"string","description":"The complete visual question and relevant conversation context. Preserve what the user wants explained."}},"required":["question"],"additionalProperties":false}""") }

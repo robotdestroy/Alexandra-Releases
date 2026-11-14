@@ -358,13 +358,40 @@ public sealed class CombatTests : IDisposable
         Assert.True(guard.CanPlay(3, context, now));
         Assert.False(guard.CanPlay(3, context with { EvidenceKey = "new" }, now));
         Assert.False(guard.CanPlay(3, null, now));
-        Assert.False(guard.CanPlay(3, context, now.AddSeconds(4)));
-        Assert.False(guard.CanPlay(3, context with { ReadAt = now.AddSeconds(13) }, now.AddSeconds(13)));
+        Assert.False(guard.CanPlay(3, context, now.AddSeconds(6)));
+        Assert.False(guard.CanPlay(3, context with { ReadAt = now.AddSeconds(16) }, now.AddSeconds(16)));
         Assert.True(guard.CanPlay(4, null, now));
         guard.Arm(3, context, CombatQueryKind.Review);
         Assert.True(guard.CanPlay(3, null, now.AddMinutes(1)));
         guard.Arm(3, context, CombatQueryKind.Live); guard.Clear();
         Assert.True(guard.CanPlay(3, null, now));
+    }
+    [Fact]
+    public void ShortReplyFinishesAcrossRoutineChangesButStopsForNewContextOrLostFeed()
+    {
+        var now = _clock.Now;
+        var context = new CombatContext("{}", "snapshot", now, true, ContinuityKey: "same-ship-session");
+        var guard = new CombatReplyGuard(); guard.Arm(1, context, CombatQueryKind.Live);
+        Assert.True(guard.CanPlay(1, context with { EvidenceKey = "target-changed", ReadAt = now.AddSeconds(2) }, now.AddSeconds(2), true));
+        var later = context with { EvidenceKey = "pips-and-health-changed", ReadAt = now.AddSeconds(20) };
+        Assert.True(guard.CanPlay(1, later, now.AddSeconds(20), true));
+        Assert.False(guard.CanPlay(1, later with { ContinuityKey = "new-ship" }, now.AddSeconds(20)));
+        Assert.False(guard.CanPlay(1, later with { LiveAvailable = false }, now.AddSeconds(20)));
+        Assert.False(guard.CanPlay(1, later, now.AddSeconds(26))); // polling stopped
+        Assert.False(guard.CanPlay(1, later with { ReadAt = now.AddSeconds(48) }, now.AddSeconds(48))); // playback bound is not renewed by chunks
+    }
+    [Fact]
+    public async Task ContinuitySurvivesTargetPipsAndHullButChangesOnDeparture()
+    {
+        await Fixture(); var source = Source(); var first = await source.ReadAsync(default);
+        await Status(pips: "[8,2,2]");
+        await Append("""{"timestamp":"2026-11-11T10:00:12Z","event":"HullDamage","Health":0.55,"PlayerPilot":true,"Fighter":false}""");
+        await Append("""{"timestamp":"2026-11-11T10:00:12Z","event":"ShipTargeted","TargetLocked":false}""");
+        var changed = await source.ReadAsync(default);
+        Assert.NotEqual(first.EvidenceKey, changed.EvidenceKey);
+        Assert.Equal(first.ContinuityKey, changed.ContinuityKey);
+        await Append("""{"timestamp":"2026-11-11T10:00:12Z","event":"SupercruiseEntry"}""");
+        Assert.NotEqual(first.ContinuityKey, (await source.ReadAsync(default)).ContinuityKey);
     }
     private sealed class TestClock : TimeProvider
     {

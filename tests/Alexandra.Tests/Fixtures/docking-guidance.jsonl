@@ -1,0 +1,5 @@
+{"timestamp":"2026-11-13T10:00:00Z","event":"Commander","Name":"Synthetic Pad Tester"}
+{"timestamp":"2026-11-13T10:00:01Z","event":"LoadGame","Commander":"Synthetic Pad Tester","Ship":"anaconda","ShipID":1}
+{"timestamp":"2026-11-13T10:00:02Z","event":"Location","StarSystem":"Synthetic System","Docked":false}
+{"timestamp":"2026-11-13T10:00:03Z","event":"DockingRequested","StationName":"Synthetic Port","StationType":"Coriolis","MarketID":123}
+{"timestamp":"2026-11-13T10:00:04Z","event":"DockingGranted","StationName":"Synthetic Port","StationType":"Coriolis","MarketID":123,"LandingPad":24}

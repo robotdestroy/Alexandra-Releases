@@ -181,8 +181,7 @@ public partial class SetupWindow : Window
     {
         try
         {
-            System.IO.Directory.CreateDirectory(SettingsStore.SessionLogDirectory);
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(SettingsStore.SessionLogDirectory) { UseShellExecute = true });
+            new SessionLogsWindow(SettingsStore.SessionLogDirectory) { Owner = this }.Show();
         }
         catch (Exception) { ErrorText.Text = "Could not open the session logs folder. Check access to the path above."; }
     }

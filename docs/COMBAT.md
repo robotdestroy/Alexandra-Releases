@@ -20,7 +20,7 @@ Hold your usual push-to-talk button and ask naturally:
 - Session combat events: incoming fire, shields down/restored, hull reports, heat damage, interdictions, escapes, awards and losses.
 
 Immediate combat questions use a dedicated local lookup instead of the broader memory/research path.
-Live answers are instructed to be one short fact or next step. Normal conversation, research and requested screen inspection still work.
+Live answers are instructed to be one short fact or next step; a sitrep can use two short sentences (up to 45 words) to cover relevant available readings. Percentage follow-ups explicitly explain that own shield percentage is unavailable rather than repeating shield up/down. Normal conversation, research and requested screen inspection still work.
 
 ## Freshness and limits
 
@@ -29,7 +29,7 @@ Live answers are instructed to be one short fact or next step. Normal conversati
 - No reliable own shield percentage, live ammunition/capacitor charge, range, enemy positions or damage-per-second is available from these records.
 - The local tailer checks about every 750 ms and catches up on demand. It covers up to the latest three journal files, ordered by their first event timestamps so legacy filenames cannot displace current sessions. Durable memory can provide additional session history for a relevant review.
 - Status older than a session/vehicle/travel transition is rejected. A stopped, restarted or unverifiable game process makes cockpit state unavailable. New commanders, ship changes, target loss, death and repairs clear affected observations.
-- A live-data reply is dropped if cockpit evidence changes, the polling result ages beyond three seconds, or the tool result is over 12 seconds old before playback completes. The window shows “Combat changed · ask again”, including in minimal mode; no automatic spoken interruption is added.
+- A live-data reply is a snapshot at question time. Routine pip, target and health updates no longer interrupt it mid-sentence. First audio must arrive within 15 seconds of the lookup; once started, playback has a fixed 45-second upper bound. Losing polling for over five seconds, leaving the game, death, ship/vehicle changes or a travel/location transition still invalidate the reply. New push-to-talk always interrupts as before. The window shows “Combat changed · ask again” for invalidated replies; no automatic spoken interruption is added.
 - Combat reviews group events by gameplay session, not inferred fight boundaries. Reward awards are not total kills or proof of redemption. An event sequence does not establish the cause of damage or death.
 - No flight controls, background screenshots or continuous HUD recognition. Optional callouts follow the bounded rules below, not freeform model decisions.
 

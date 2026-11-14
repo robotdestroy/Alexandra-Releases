@@ -81,7 +81,7 @@
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
         <TextBlock x:Name="SessionLogPath" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
         <TextBlock x:Name="SessionLogStatus" FontSize="12" Foreground="{StaticResource AccentHoverBrush}" TextWrapping="Wrap"/>
-        <Button Content="Open session logs" Click="OpenSessionLogs" HorizontalAlignment="Left" Margin="0,8,0,18"/>
+        <Button Content="View session logs" Click="OpenSessionLogs" HorizontalAlignment="Left" Margin="0,8,0,18"/>
         <CheckBox x:Name="LoggingBox" Content="Save local conversation debug logs" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,6"/>
         <TextBlock Text="Saves what you said, generated replies, lookups, sources, and errors as local text for up to 7 days / 10 MB. No audio, screenshots, raw journals, or API keys. Logs can contain personal conversation details. They are not automatically uploaded."
                    FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>

@@ -53,7 +53,7 @@ public sealed class SessionLogbook
             foreach (var active in Sessions.Where(s => s.EndReason is null))
                 Close(active, "Next game session observed; previous exit time unknown", null);
             session = Start(scope, at, false, system, goals.Where(g => g.UpdatedAt <= at), missions);
-            session.Ship = Clean(MemoryProgress.Text(e, "Ship_Localised") ?? MemoryProgress.Text(e, "Ship") ?? "Unknown ship");
+            session.RecordShip(Clean(MemoryProgress.Text(e, "Ship_Localised") ?? MemoryProgress.Text(e, "Ship") ?? "Unknown ship"));
         }
         else if (session is null)
         {
@@ -102,7 +102,9 @@ public sealed class SessionLogbook
                 Highlight(session, at, $"Docked at {session.LastStation} in {Clean(system ?? "unknown system")}.");
                 break;
             case "Undocked": session.LastStation = null; break;
-            case "Loadout": session.Ship = Clean(Text("Ship_Localised") ?? Text("Ship") ?? session.Ship ?? "Unknown ship"); break;
+            case "Loadout":
+                if ((Text("Ship_Localised") ?? Text("Ship")) is { } ship) session.RecordShip(Clean(ship));
+                break;
             case "MarketBuy":
                 session.Bought += Count("Count"); session.TradeSpent += Count("TotalCost");
                 Highlight(session, at, $"Bought {Quantity("Count")} t of {Commodity()}{Place(session)}."); break;
@@ -187,6 +189,17 @@ public sealed class SessionLogbook
         return changed;
     }
 
+    public bool RecordPhoto(SessionLogAnchor anchor, SessionPhoto photo)
+    {
+        if (!Enabled || RecordingSince is null || anchor.SpokenAt < RecordingSince) return false;
+        var session = Sessions.SingleOrDefault(s => s.Scope == anchor.Scope && s.Id == anchor.SessionId && s.EndReason is null);
+        if (session is null || anchor.SpokenAt < session.StartedAt) return false;
+        if (session.Photos.Any(p => p.FileUri == photo.FileUri)) return true;
+        if (session.Photos.Count >= 200) return false;
+        session.Photos.Add(photo); session.Revision++;
+        return true;
+    }
+
     // Watermarks prevent replay duplication; only live or unexported sessions need full projections.
     // Markdown files remain until the user removes them.
     public void Compact()
@@ -197,9 +210,12 @@ public sealed class SessionLogbook
         Watermarks.Values.All(w => w is not null && w.Seen is not null) &&
         Sessions.All(s => s is not null && Regex.IsMatch(s.Id ?? "", "^[A-F0-9]{24}$") &&
             !string.IsNullOrWhiteSpace(s.Scope) && s.Revision > 0 && s.WrittenRevision >= 0 && s.WrittenRevision <= s.Revision &&
-            s.StartedAt <= s.LastEventAt && s.Systems is not null && s.Highlights is not null && s.MissionChanges is not null &&
+            s.StartedAt <= s.LastEventAt && s.Systems is not null && s.ShipsUsed is not null && s.ShipsUsed.All(ship => !string.IsNullOrWhiteSpace(ship)) &&
+            s.Highlights is not null && s.MissionChanges is not null &&
             s.GoalChanges is not null && s.OpenGoals is not null && s.OpenMissions is not null && s.Materials is not null &&
             s.Combat is not null && s.Combat.Timeline is not null && s.Statistics is not null && s.StatedPlans is not null &&
+            s.Photos is not null && s.Photos.All(p => p is not null && !string.IsNullOrWhiteSpace(p.Caption) &&
+                Uri.TryCreate(p.FileUri, UriKind.Absolute, out var u) && u.IsFile && !u.IsUnc) &&
             s.StatedPlans.All(p => p is not null && !string.IsNullOrWhiteSpace(p.Text)) &&
             s.CommunityGoals is not null && s.CommunityGoals.Goals is not null && s.CommunityGoals.Events is not null &&
             s.CommunityGoals.Goals.Values.All(g => g is not null && !string.IsNullOrWhiteSpace(g.Title) &&
@@ -251,6 +267,17 @@ public sealed class GameplaySession
     public int Revision { get; set; } = 1;
     public int WrittenRevision { get; set; }
     public string? Ship { get; set; }
+    public List<string> ShipsUsed { get; set; } = [];
+    public void RecordShip(string ship)
+    {
+        // Preserve the last ship in older checkpoints before recording a later switch.
+        foreach (var observed in new[] { Ship, ship }.OfType<string>())
+        {
+            var name = SessionLogPresentation.ShipName(observed);
+            if (!ShipsUsed.Contains(name, StringComparer.OrdinalIgnoreCase) && ShipsUsed.Count < 200) ShipsUsed.Add(name);
+        }
+        Ship = ship;
+    }
     public string? StartSystem { get; set; }
     public string? EndSystem { get; set; }
     public string? LastStation { get; set; }
@@ -272,6 +299,7 @@ public sealed class GameplaySession
     public SessionCommunityGoals CommunityGoals { get; set; } = new();
     public SessionStatistics Statistics { get; set; } = new();
     public List<StatedSessionPlan> StatedPlans { get; set; } = [];
+    public List<SessionPhoto> Photos { get; set; } = [];
 
     public bool AddStatedPlans(string transcript, DateTimeOffset at)
     {
@@ -310,8 +338,9 @@ public sealed class GameplaySession
         b.AppendLine($"- Recorded from: {StartedAt:yyyy-MM-dd HH:mm:ss} UTC");
         b.AppendLine($"- Last game activity: {LastEventAt:yyyy-MM-dd HH:mm:ss} UTC");
         if (EndedAt is { } ended) b.AppendLine($"- Ended: {ended:yyyy-MM-dd HH:mm:ss} UTC");
-        b.AppendLine($"- Recorded span: {Math.Max(0, (LastEventAt - StartedAt).TotalMinutes):0} minutes (not an active-play timer)");
-        if (Ship is not null) b.AppendLine($"- Ship: {Ship}");
+        b.AppendLine($"- Recorded span: {Math.Max(0, (LastEventAt - StartedAt).TotalMinutes):0} minutes");
+        if (Ship is not null) b.AppendLine($"- Ship: {SessionLogPresentation.ShipName(Ship)}");
+        if (ShipsUsed.Count > 1) b.AppendLine($"- Ships used: {string.Join("; ", ShipsUsed)}");
         b.AppendLine().AppendLine("## Summary").AppendLine();
         var statistics = SummaryStatistics().ToArray();
         if (statistics.Length > 0)
@@ -335,6 +364,9 @@ public sealed class GameplaySession
         Section(b, "Saved goals and missions", GoalChanges.Concat(MissionChanges), "No saved personal-goal or mission changes recorded.");
         Section(b, "Community goals and redeemed bonds", CommunityGoals.Details());
         Section(b, "Highlights", Highlights, "No additional highlights recorded.");
+        Section(b, "Photos", Photos.Select(p => $"{p.At:HH:mm:ss} UTC — {p.Caption}" +
+            (p.System is null ? "" : $" — {p.System}") + (p.Station is null ? "" : $", {p.Station}") +
+            $" — [View photo](<{p.FileUri.Replace("<", "%3C").Replace(">", "%3E")}>)"));
         Section(b, "Combat after-action", Combat.Markdown());
         if (Materials.Count > 0) Section(b, "Materials collected", Materials.OrderBy(p => p.Key).Select(p => $"{p.Key}: +{p.Value} collected (not current inventory)"));
         if (TradeSpent > 0 || TradeEarned > 0)
@@ -344,7 +376,7 @@ public sealed class GameplaySession
         Section(b, "Pick up next time", OpenGoals.Select(g => "Personal goal: " + g).Concat(OpenMissions.Select(m => "Mission last seen active: " + m)), "No open goals or missions recorded.");
         b.AppendLine().AppendLine("## About this log").AppendLine();
         if (Incomplete) b.AppendLine("Coverage is partial: recording began mid-session, was paused, or some journal history was unreadable.");
-        b.AppendLine("Generated locally from Elite journal evidence, explicitly saved goals and short first-person gameplay-plan excerpts from your speech. No extra API calls, audio, screenshots or full conversation transcripts. Stated plans are not game facts. Personal goal completion is user-confirmed; travel alone does not prove it.");
+        b.AppendLine("Generated locally from Elite journal evidence, explicitly saved goals and short first-person gameplay-plan excerpts from your speech. Requested photos are linked to local PNGs with your captions; no automatic screenshots, image uploads, extra summary API calls, audio or full conversation transcripts. Stated plans and captions are not game facts. Personal goal completion is user-confirmed; travel alone does not prove it.");
         b.AppendLine("Times are UTC. Open-session status is last-known, not proof the game is still running. Lists are bounded to keep long sessions readable. Missing data is not a completed goal.");
         b.AppendLine("Session stats show only positive recorded values. Credits received are supported payouts and sales, not net profit or a full balance change. Combat awards are not a unique ship-kill count; only journal-confirmed player kills are counted as kills.");
         b.AppendLine("This file is automatically refreshed. Keep personal edits in a separate file; completed logs are retained until you remove them.");

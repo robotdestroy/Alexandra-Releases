@@ -27,7 +27,7 @@ public interface IGameCapture
     Task<byte[]> CaptureAsync(CancellationToken cancellationToken); // JPEG, reduced for visual research.
     Task<byte[]> CapturePngAsync(CancellationToken cancellationToken); // Full resolution, only for an explicit save.
 }
-public sealed record SavedScreenshot(string FileName, string Folder);
+public sealed record SavedScreenshot(string FileName, string Folder, string? FullPath = null, DateTimeOffset? SavedAt = null);
 public interface IGameScreenshotStore
 {
     Task<SavedScreenshot> SaveAsync(byte[] png, CancellationToken cancellationToken);

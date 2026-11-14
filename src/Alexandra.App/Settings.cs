@@ -36,12 +36,13 @@ public sealed class Settings
 }
 public sealed class SettingsStore
 {
-    public static string SessionLogDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Alexandra", "Session Logs");
+    public static string SessionLogDirectory => AppDataPaths.SessionLogs;
     private readonly string _directory;
     public Settings Value { get; private set; } = new();
     public SettingsStore(string? directory = null)
     {
-        _directory = directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Alexandra");
+        if (directory is null) AppDataPaths.Initialize();
+        _directory = directory ?? AppDataPaths.Root;
         var path = Path.Combine(_directory, "settings.json");
         if (File.Exists(path))
         {

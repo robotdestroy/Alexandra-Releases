@@ -276,4 +276,23 @@ public sealed class VoicePreviewTests
             .GenerateAsync(CombatCalloutKind.ShieldsLost, "marin", "synthetic-key", default));
         Assert.Equal(1, wire.Disposals);
     }
+    [Fact]
+    public async Task RemindersUseSelectedVoiceAndOnlyTheSavedExcerptWithoutTools()
+    {
+        var wire = new Wire { ConfirmedVoice = "marin", Transcript = "Reminder: claim my rewards." };
+        var result = await new RealtimeReminderAudioSource(() => wire).GenerateAsync("claim my rewards", "marin", "synthetic-key", default);
+        Assert.Equal(wire.Audio, result);
+        Assert.Empty(wire.Sent[0].GetProperty("session").GetProperty("tools").EnumerateArray());
+        var response = wire.Sent[1].GetProperty("response");
+        Assert.Equal("none", response.GetProperty("conversation").GetString());
+        Assert.Equal("Say exactly: Reminder: claim my rewards.", response.GetProperty("input")[0].GetProperty("content")[0].GetProperty("text").GetString());
+        Assert.Equal(1, wire.Disposals);
+    }
+    [Fact]
+    public async Task ReminderAudioCannotAddAdviceOrASecondSentence()
+    {
+        var wire = new Wire { Transcript = "Reminder: claim my rewards. Fly to Sol now." };
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new RealtimeReminderAudioSource(() => wire)
+            .GenerateAsync("claim my rewards", "marin", "synthetic-key", default));
+    }
 }

@@ -1,0 +1,64 @@
+<Window x:Class="Alexandra.App.SessionLogsWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="Alexandra · Session logs" Width="1060" Height="760" MinWidth="700" MinHeight="480" WindowStartupLocation="CenterOwner"
+ Background="{DynamicResource WindowBrush}" Foreground="{DynamicResource TextPrimaryBrush}" PreviewKeyDown="SearchKeyDown">
+ <Grid Margin="20">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <TextBlock Text="SESSION LOGS" FontSize="21" Margin="0,0,0,12"/>
+  <TextBlock x:Name="FolderPath" Grid.Row="1" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,12"/>
+  <Grid Grid.Row="2">
+   <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="16"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+   <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <TextBlock Text="SEARCH SESSIONS" FontSize="12" Margin="0,0,0,6"/>
+    <DockPanel Grid.Row="1" Margin="0,0,0,8">
+     <Button x:Name="ClearSearch" DockPanel.Dock="Right" Content="Clear" FontSize="12" Padding="7,5" Margin="6,0,0,0"
+      Click="ClearSearchClick" IsEnabled="False" AutomationProperties.Name="Clear session search"/>
+     <TextBox x:Name="SearchBox" TextChanged="SearchChanged" FontSize="17" Padding="7" MaxLength="200"
+      VerticalContentAlignment="Center" AutomationProperties.Name="Search session logs"
+      ToolTip="Search ships, systems, missions or notes. Ctrl+F to search; Escape to clear."/>
+    </DockPanel>
+    <TextBlock x:Name="SearchCount" Grid.Row="2" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
+    <ListBox x:Name="LogList" Grid.Row="3" DisplayMemberPath="Label" SelectionChanged="SelectionChanged" AutomationProperties.Name="Gameplay session logs"
+     Background="{DynamicResource PanelBrush}" Foreground="{DynamicResource TextPrimaryBrush}" BorderThickness="0"/>
+   </Grid>
+   <Grid Grid.Column="2">
+    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <RichTextBox x:Name="LogContent" IsReadOnly="True" IsDocumentEnabled="True" VerticalScrollBarVisibility="Auto"
+     HorizontalScrollBarVisibility="Disabled" Background="Transparent" BorderThickness="0" Padding="0"
+     Foreground="{DynamicResource TextPrimaryBrush}" AutomationProperties.Name="Formatted session log" SizeChanged="LogContentSizeChanged"/>
+    <StackPanel x:Name="PhotoSection" Grid.Row="1" Visibility="Collapsed" Margin="0,10,0,0">
+     <TextBlock x:Name="PhotoHeading" FontSize="12" Margin="8,0,0,6"/>
+     <ScrollViewer VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Auto" MaxHeight="155">
+      <ItemsControl x:Name="PhotoThumbnails" AutomationProperties.Name="Session photo thumbnails">
+       <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+       <ItemsControl.ItemTemplate>
+        <DataTemplate>
+         <Button Click="PhotoClick" Tag="{Binding}" ToolTip="{Binding Caption}" Padding="6" Margin="0,0,8,0"
+          AutomationProperties.Name="{Binding Caption}">
+          <StackPanel Width="150">
+           <Grid Height="90" Background="{DynamicResource PanelBrush}">
+            <Image Source="{Binding Thumbnail}" Stretch="Uniform"/>
+            <TextBlock Text="{Binding Status}" FontSize="12" TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+           </Grid>
+           <TextBlock Text="{Binding Caption}" FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,5,0,0"/>
+          </StackPanel>
+         </Button>
+        </DataTemplate>
+       </ItemsControl.ItemTemplate>
+      </ItemsControl>
+     </ScrollViewer>
+    </StackPanel>
+   </Grid>
+  </Grid>
+  <DockPanel Grid.Row="3" Margin="0,14,0,0" LastChildFill="True">
+   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+    <Button x:Name="RefreshLogs" Content="Refresh" Click="RefreshClick" Margin="8,0,0,0"/>
+    <Button Content="Open folder" Click="FolderClick" Margin="8,0,0,0"/>
+    <Button x:Name="SaveCopy" Content="Save a copy…" Click="SaveCopyClick" Margin="8,0,0,0"/>
+   </StackPanel>
+   <TextBlock x:Name="Notice" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12"/>
+  </DockPanel>
+ </Grid>
+</Window>

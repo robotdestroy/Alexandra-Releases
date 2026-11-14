@@ -166,7 +166,7 @@ public sealed class GameWatcherHost : IGameWatcherHost
             using var stop = new EventWaitHandle(false, EventResetMode.ManualReset, StopName);
             stop.Reset();
             var coordinator = new GameAutoLaunchCoordinator(new WindowsGameAutoLaunchEnvironment());
-            var log = new LocalDiagnosticLog(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Alexandra", "Logs"),
+            var log = new LocalDiagnosticLog(AppDataPaths.Diagnostics,
                 () => new SettingsStore().Value.DiagnosticLoggingEnabled);
             GameAutoLaunchResult? previous = null;
             do

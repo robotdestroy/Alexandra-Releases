@@ -1,0 +1,6 @@
+{"timestamp":"2026-11-12T10:00:01Z","event":"LoadGame","Commander":"Synthetic Reminder Pilot","FID":"SYNTHETIC-REMINDER-A","Ship":"cobramkiii","ShipID":5}
+{"timestamp":"2026-11-12T10:00:02Z","event":"Location","StarSystem":"Sol","Docked":false}
+{"timestamp":"2026-11-12T10:03:00Z","event":"Docked","StarSystem":"Sol","StationName":"Galileo","StationType":"Coriolis"}
+{"timestamp":"2026-11-12T10:04:00Z","event":"Undocked","StationName":"Galileo"}
+{"timestamp":"2026-11-12T10:05:00Z","event":"FSDJump","StarSystem":"Deciat"}
+{"timestamp":"2026-11-12T10:06:00Z","event":"Touchdown","PlayerControlled":true,"StarSystem":"Deciat","Body":"Deciat 6 A","Latitude":1.0,"Longitude":2.0}

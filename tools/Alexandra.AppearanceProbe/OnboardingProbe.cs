@@ -121,7 +121,7 @@ internal static class OnboardingProbe
                 "first-run key recovery does not reset existing preferences");
             var settings = Create(SetupMode.Settings);
             check(((CheckBox)settings.FindName("SessionLogsBox")).IsChecked == true &&
-                ((TextBlock)settings.FindName("SessionLogPath")).Text.EndsWith(Path.Combine("Alexandra", "Session Logs")) &&
+                ((TextBlock)settings.FindName("SessionLogPath")).Text.EndsWith(Path.Combine("AlexandraData", "Session Logs")) &&
                 ((TextBlock)settings.FindName("SessionLogStatus")).Text == "Synthetic session save warning",
                 "Setup exposes enabled local session journals, their folder and storage failures");
             ((CheckBox)settings.FindName("SessionLogsBox")).IsChecked = false;

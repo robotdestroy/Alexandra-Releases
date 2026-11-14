@@ -148,10 +148,49 @@ internal static class Program
         while (repo is not null && !File.Exists(Path.Combine(repo.FullName, "Alexandra.sln"))) repo = repo.Parent;
         if (repo is null) throw new InvalidOperationException("Run the appearance probe from a source checkout.");
         var mainMarkup = System.Xml.Linq.XDocument.Load(Path.Combine(repo.FullName, "src", "Alexandra.App", "MainWindow.xaml"));
-        var logMenu = mainMarkup.Descendants().Single(e => e.Name.LocalName == "MenuItem" && (string?)e.Attribute("Header") == "Open session logs…");
+        var logMenu = mainMarkup.Descendants().Single(e => e.Name.LocalName == "MenuItem" && (string?)e.Attribute("Header") == "View session logs…");
         Check((string?)logMenu.Attribute("Click") == "SessionLogsClick" &&
             typeof(MainWindow).GetMethod("SessionLogsClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic) is not null,
             "right-click menu opens session journals through the wired folder handler");
+        var recentLogMenu = mainMarkup.Descendants().Single(e => e.Name.LocalName == "MenuItem" && (string?)e.Attribute("Header") == "View most recent session log…");
+        Check((string?)recentLogMenu.Attribute("Click") == "MostRecentSessionLogClick" &&
+            typeof(MainWindow).GetMethod("MostRecentSessionLogClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic) is not null &&
+            recentLogMenu.ElementsAfterSelf().First() == logMenu,
+            "most-recent-session shortcut is wired immediately above the session-log folder item");
+        var recentMenuMeasure = new MenuItem { Header = "View most recent session log…", Style = (Style)application.FindResource(typeof(MenuItem)) };
+        recentMenuMeasure.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var contextMenuWidth = (double)recentLogMenu.Parent!.Attribute("Width")!;
+        Check(recentMenuMeasure.DesiredSize.Width <= contextMenuWidth - 8,
+            "most-recent-session label fits the context menu without clipping");
+        var logFixture = Path.Combine(Path.GetTempPath(), "Alexandra-LogViewer-Probe-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(logFixture);
+        try
+        {
+            var logPath = Path.Combine(logFixture, "Session-2026-11-13-100000-ABCDEF0123456789ABCDEF01.md");
+            File.WriteAllText(logPath, "# Gameplay session — 2026-11-13 10:00 UTC\n\n- Ship: federation\\_corvette\n- Recorded span: 45 minutes (not an active-play timer)\n\n## Summary\n\n- Credits earned: 1,000\n");
+            var viewer = new SessionLogsWindow(logFixture);
+            Check(Directory.Exists(SessionLogFiles.ResolveFolder(logFixture)), "folder resolver returns a real readable directory across package redirection");
+            Check(((SolidColorBrush)viewer.Background).Color == Color.FromRgb(3, 2, 1), "session viewer has an explicitly dark background");
+            viewer.Measure(new Size(920, 640)); viewer.Arrange(new Rect(0, 0, 920, 640)); viewer.UpdateLayout();
+            var content = (RichTextBox)viewer.FindName("LogContent");
+            Check(content.IsReadOnly && new System.Windows.Documents.TextRange(content.Document.ContentStart, content.Document.ContentEnd).Text.Contains("Credits earned: 1,000"), "session log is readable without Explorer or a Markdown association");
+            var shownLog = new System.Windows.Documents.TextRange(content.Document.ContentStart, content.Document.ContentEnd).Text;
+            Check(shownLog.Contains("FEDERAL CORVETTE") && !shownLog.Contains("not an active-play timer") && File.ReadAllText(logPath).Contains("not an active-play timer"),
+                "older log headers display clean ship names without mutating original journals");
+            Check(((ListBox)viewer.FindName("LogList")).Items.Count == 1 && ((Button)viewer.FindName("SaveCopy")).IsEnabled,
+                "session viewer selects the newest log and allows saving a copy");
+            viewer.Close();
+            var emptyViewer = new SessionLogsWindow(Path.Combine(logFixture, "missing"));
+            var emptyContent = ((RichTextBox)emptyViewer.FindName("LogContent")).Document;
+            Check(!((Button)emptyViewer.FindName("SaveCopy")).IsEnabled && new System.Windows.Documents.TextRange(emptyContent.ContentStart, emptyContent.ContentEnd).Text.Contains("No gameplay"),
+                "empty log folder has a safe explanatory state");
+            emptyViewer.Close();
+        }
+        finally { Directory.Delete(logFixture, true); }
+        SessionLogViewerProbe.Run(Check);
+        SessionPhotoCopyProbe.Run(Check);
+        SessionLogSearchProbe.Run(Check);
+        SessionLogHeaderProbe.Run(Check, args.Contains("--journal-header-preview") ? Path.GetFullPath("outputs/screenshots") : null);
         var notice = new Border(); var noticeText = new TextBlock();
         WindowAppearance.ApplyNotice(notice, noticeText, true, "Voice busy · retrying in 12s");
         Check(notice.Visibility == Visibility.Visible && noticeText.Text.Contains("12s"), "minimal mode exposes cooldown notices");

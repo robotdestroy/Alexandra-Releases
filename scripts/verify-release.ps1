@@ -30,8 +30,8 @@ try {
         }
     }
     foreach($required in @('Alexandra.App.exe','Alexandra.App.dll','Alexandra.Core.dll','Alexandra.Infrastructure.dll',
-        'Velopack.dll','coreclr.dll','PresentationFramework.dll','.playwright/node/win32_x64/node.exe','.playwright/package/package.json',
-        'README.md','Alexandra-Read-Me.pdf','LICENSE.txt','source.json')) {
+        'Velopack.dll','Markdig.dll','coreclr.dll','PresentationFramework.dll','.playwright/node/win32_x64/node.exe','.playwright/package/package.json',
+        'README.md','Alexandra-Read-Me.pdf','LICENSE.txt','THIRD-PARTY-NOTICES.txt','source.json')) {
         if(-not($names | Where-Object { $_.EndsWith('/'+$required,[StringComparison]::OrdinalIgnoreCase) })) { throw "Missing runtime payload: $required" }
     }
     # Downloadable guides must be exactly the same files included with the installed app.

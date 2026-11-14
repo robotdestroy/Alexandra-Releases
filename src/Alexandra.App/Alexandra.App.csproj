@@ -5,13 +5,14 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <Version>0.1.26</Version>
+    <Version>0.1.27</Version>
     <StartupObject>Alexandra.App.App</StartupObject>
     <AlexandraUpdateFeedUrl Condition="'$(AlexandraUpdateFeedUrl)' == ''"></AlexandraUpdateFeedUrl>
     <ApplicationIcon>Assets\alexandra-icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Content Include="../../LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
+    <Content Include="../../docs/THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <Content Include="../../docs/READ-ME-FIRST.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <Content Include="../../output/pdf/Alexandra-Read-Me.pdf" Link="Alexandra-Read-Me.pdf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest"/>
     <Resource Include="Assets/alexandra-icon.ico"/>
@@ -19,6 +20,7 @@
     <Using Remove="System.Windows.Forms"/>
     <ProjectReference Include="../Alexandra.Infrastructure/Alexandra.Infrastructure.csproj"/>
     <PackageReference Include="NAudio" Version="2.3.0"/>
+    <PackageReference Include="Markdig" Version="1.6.0"/>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0"/>
     <PackageReference Include="Velopack" Version="1.2.0"/>
   </ItemGroup>
