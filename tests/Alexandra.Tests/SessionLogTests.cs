@@ -28,7 +28,7 @@ public sealed class SessionLogTests : IDisposable
     [Fact]
     public async Task RetainsShipsUsedAcrossChangesAndAppRestarts()
     {
-        await File.AppendAllTextAsync(Journal, await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "session-ship-switches.jsonl")));
+        await File.AppendAllTextAsync(Journal, await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "ship-switches.jsonl")));
         await Create().SynchronizeAsync(default);
         Assert.Contains("- Ships used: Federal Corvette; Mandalay", await OnlyLog());
         await Append("""{"timestamp":"2026-11-11T10:02:00Z","event":"Loadout","Ship":"python","ShipID":3}""");
